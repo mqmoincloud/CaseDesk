@@ -1,0 +1,27 @@
+# Direct dependencies only, pinned. Install with:
+#   pip install -r requirements.txt
+
+# --- API ---
+fastapi==0.141.1
+uvicorn==0.52.4
+
+# --- Database ---
+SQLAlchemy==2.0.52
+alembic==1.19.1
+
+# --- Validation ---
+pydantic==2.13.4
+email-validator==2.3.0        # required by pydantic's EmailStr
+
+# --- Auth ---
+python-jose==3.5.0            # JWT encode/decode
+cryptography==50.0.0          # signing backend for python-jose
+passlib==1.7.4                # password hashing wrapper
+bcrypt==4.0.1                 # pinned: passlib 1.7.4 breaks on bcrypt >= 4.1
+
+# --- Config ---
+python-dotenv==1.2.3
+
+# --- Tests ---
+pytest==9.1.1
+httpx2==2.12.0                # starlette's TestClient needs this

@@ -1,0 +1,32 @@
+# --- Secrets ---
+# .env holds SECRET_KEY and the database URL. Never commit it.
+# .env.example is the committed template - keep the two in step.
+.env
+*.env
+!.env.example
+
+# --- Python ---
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- Databases ---
+# Local SQLite files. The schema lives in migrations/, the data in scripts/seed.py,
+# so there is nothing here another machine needs.
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Node / frontend ---
+node_modules/
+dist/
+.vite/
+
+# --- Editors and OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
