@@ -14,12 +14,11 @@ have picked the other option.
 The brief says this only runs locally, and SQLite needs nothing installed or
 started. That made the "clone it and run it" requirement much easier for me.
 
-One problem I want to be honest about: SQLite has no timezone-aware column type.
-So NF-06 is only half done. I store everything in UTC, but the timezone part is
-dropped when it saves and comes back without it. Postgres has a proper
-`TIMESTAMPTZ` type and would have handled this by itself. If this ever went
-live, that would be the reason to switch. Switching is just a `DB_URL` change
-and a driver, since SQLAlchemy handles the rest.
+The one thing it costs me is timezone-aware timestamps, which NF-06 asks for.
+SQLite has no column type that stores an offset. I worked around it rather than
+switching databases - see the UTC timestamps entry below. Postgres would have
+given me `TIMESTAMPTZ` and no workaround at all. If this ever went live that is
+the reason I would switch, and switching is a `DB_URL` change plus a driver.
 
 ---
 
@@ -154,26 +153,33 @@ client can still be removed.
 
 ---
 
-### Pagination: offset, ordered by id going up
+### Pagination: cursors, newest first
 
-**Decided** — `ORDER BY id` ascending with `offset`/`limit`, and `total` from a
+**Decided** — `ORDER BY id DESC`, paged with `?before=<id>`, and `total` from a
 separate count using the same filters.
-**Rejected** — Cursor pagination. Ordering newest-first.
+**Rejected** — Offset paging. Ordering oldest-first.
 
 US-17 says adding a record while someone is paging must not cause a duplicate or
 a skipped row.
 
-Ordering newest-first breaks that. A new row goes to the top, everything shifts
-down one place, and page 2 shows something the user already saw on page 1.
-Ordering by id going up puts new rows at the end instead, so the pages already
-visited do not move. That gives me what US-17 asks for without cursors, which I
-would have found much harder.
+I got this wrong the first time. I started with `ORDER BY id` ascending and
+offset, which does satisfy US-17 - new rows take the highest id and land at the
+end, so the pages already visited do not move. But it also means the client you
+just created is on the last page, which is a bad way to use the app.
 
-The trade-off is that the newest client shows up last. For a list you search
-anyway, I can live with that.
+Ordering newest-first with an offset would have broken US-17. I worked it
+through with 25 rows: page 1 is ids 25-16, someone inserts id 26, and page 2 is
+now 16-7 - id 16 appears twice and one row is never seen.
 
-Notes are the opposite — they have to be newest-first — and the same problem
-showed up there in a smaller way. SQLite's `now()` only goes down to the second,
+Cursors fix both at once. Page two asks for rows *before* the last id page one
+showed, so anything created in between has a higher id and falls outside that
+window entirely. Nothing shifts, because nothing is counted from the start.
+
+The cost is that "jump to page 5" is not possible, and Previous needs the
+frontend to remember the cursors it has used. Both lists only have Previous and
+Next buttons, so neither costs anything in practice.
+
+Notes were newest-first from the start, and a related problem showed up there. SQLite's `now()` only goes down to the second,
 so two notes added in the same second had the exact same timestamp and came back
 in the wrong order. Adding `Note.id.desc()` as a second sort key fixed it.
 
@@ -259,3 +265,99 @@ seed it.
 
 The seed uses no random values at all, so the demo data comes out identical on
 every machine and tests can rely on it.
+
+---
+
+### One error shape for the whole API
+
+**Decided** — Two exception handlers in `main.py` that rewrite every failure
+into `{"error": {"status", "message", "fields"}}`.
+**Rejected** — Leaving FastAPI's defaults. Writing one handler instead of two.
+
+NF-05 asks for one shape, and out of the box there are two: the errors I raise
+give `{"detail": "some string"}` and Pydantic's validation errors give
+`{"detail": [ ...list of objects... ]}`. The frontend had to branch on which one
+it got, in five different places, which is exactly the mess the requirement is
+warning about.
+
+Two handlers rather than one because the two exceptions are unrelated classes
+with different attributes - one has `.detail`, the other has `.errors()`. One
+function registered for both would work, but it needs an `isinstance` check
+inside, and two short handlers read better than one with a branch.
+
+The part that caught me out: registering on FastAPI's `HTTPException` misses the
+404 and 405 that Starlette raises by itself for an unknown route or a wrong
+method - those kept coming back in the old shape. FastAPI's class is a subclass
+of Starlette's, so registering on the parent catches both. There is a test for
+each of those two cases now, because I would not have thought to check by hand.
+
+Nothing in the routers changed. They still `raise HTTPException(404, "...")` and
+the handler reshapes it on the way out.
+
+---
+
+### UTC timestamps on a database that cannot store them
+
+**Decided** — A `UTCDateTime` column type that converts to UTC on the way in and
+tags values as UTC on the way out, with defaults moved to Python.
+**Rejected** — Moving to Postgres for `TIMESTAMPTZ`. Leaving NF-06 unmet.
+
+I checked what SQLAlchemy actually emits for each database:
+
+    DateTime(timezone=True) on postgresql  ->  TIMESTAMP WITH TIME ZONE
+    DateTime(timezone=True) on mysql       ->  DATETIME
+    DateTime(timezone=True) on sqlite      ->  DATETIME
+
+So `timezone=True` was doing nothing at all on SQLite - it is silently ignored.
+Interestingly MySQL ignores it too, so switching there would not have helped
+either; only Postgres, SQL Server and Oracle really store the offset.
+
+Rather than move the whole project to Postgres for this one line, I put the
+timezone back at the edges. `process_bind_param` converts whatever it is given
+to UTC before writing; `process_result_value` tags what comes back as UTC. The
+application never sees a naive datetime, and the API now sends
+`2026-08-27T05:20:50Z` instead of `2026-08-27T05:20:50`.
+
+The part I nearly missed: `server_default=func.now()` runs inside SQLite, not in
+Python, so those values would have skipped the conversion completely. The
+defaults are now `default=utcnow` on the Python side, and a hand-written
+migration drops the old server defaults so the schema and the models agree.
+Alembic could not generate that one itself - it only compares server defaults
+when `compare_server_default` is switched on.
+
+What this does not do is make the database enforce anything. The bytes on disk
+are still naive, and the guarantee only holds because everything goes through
+SQLAlchemy. Seven tests cover it; I checked they fail if the type is removed,
+because a test that cannot fail is not worth having.
+
+---
+
+### An assignee can see the case assigned to them
+
+**Decided** — A case is visible to its owner and to its assignee. The assignee
+can open it and add notes; nothing else.
+**Rejected** — Ownership only, which is what US-15 literally says.
+
+This is the one place I have deliberately gone against the brief, so it is worth
+setting out.
+
+US-15 says my cases are invisible to other staff. US-11 wants them filtered by
+assignee "so that I can see what is on my plate". Both cannot be true at once:
+if only the owner can see a case, then assigning one to a colleague hands them
+work they cannot open, and the assignee filter has nothing useful to filter.
+
+I could not find a reading of the brief where assignment means anything under
+strict ownership, so I widened it by the smallest amount that makes the feature
+work: the assignee can read the case and write notes on it. Editing the case,
+moving its status, reassigning it and reaching the client behind it all stay
+with the owner. Note deletion stays with the owner too, because US-14 is
+explicit - "only notes on cases I own".
+
+The rule lives in one function, `case_visible_to` in `security.py`, next to
+`get_current_user`. Everything about who can see what is in one place rather
+than spread across the route handlers.
+
+What has not changed: someone who is neither owner nor assignee still gets a
+404 everywhere, search still never crosses users, and clients are still
+owner-only. There is a test for each of those, and one that checks the case
+disappears again the moment it is unassigned.

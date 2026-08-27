@@ -157,3 +157,25 @@ def test_status_and_assignee_filters_combine(client, ali, ali_client_id, sara, d
     # Both filters together must narrow to the intersection, not replace each other.
     both = client.get(f"/cases?status=Intake&assignee={sara_id}", headers=ali).json()
     assert both["total"] == 0
+
+
+def test_cases_can_be_filtered_by_client(client, ali, ali_client_id, ali_case_id):
+    other_client = client.post(
+        "/clients/registration", json={"name": "Other Client"}, headers=ali
+    ).json()["id"]
+    client.post(
+        "/cases/registration",
+        json={"client_id": other_client, "title": "Other case", "case_type": "Family"},
+        headers=ali,
+    )
+
+    assert client.get("/cases", headers=ali).json()["total"] == 2
+
+    filtered = client.get(f"/cases?client_id={ali_client_id}", headers=ali).json()
+    assert filtered["total"] == 1
+    assert filtered["items"][0]["id"] == ali_case_id
+
+
+def test_client_filter_does_not_reach_across_users(client, ali, sara, ali_client_id, ali_case_id):
+    # Passing someone else's client id must not surface their cases.
+    assert client.get(f"/cases?client_id={ali_client_id}", headers=sara).json()["total"] == 0

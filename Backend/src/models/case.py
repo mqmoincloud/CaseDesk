@@ -1,5 +1,5 @@
-from src.database import Base
-from sqlalchemy import Column, Integer, DateTime, String, ForeignKey ,func
+from src.database import Base, UTCDateTime, utcnow
+from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
 
 
@@ -13,9 +13,9 @@ class Case(Base):
     title = Column(String, nullable = False)
     case_type = Column(String, nullable = False)
     status = Column(String , default = "Intake", nullable = False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(UTCDateTime, default=utcnow, nullable=False)
+    updated_at = Column(UTCDateTime, default=utcnow, onupdate=utcnow, nullable=False)
+    deleted_at = Column(UTCDateTime, nullable=True)
     version = Column(Integer, nullable = False, default = 1)
 
     # yeh jo niche wala relationship hai, ye sqlalchemy ka feature hai jo foreign key ke through related tables ko link karta hai. Iska matlab hai ki jab aap ek Case object create karte hain, to aap directly uske related Client aur Staff objects ko access kar sakte hain.

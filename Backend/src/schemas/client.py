@@ -1,8 +1,8 @@
-from pydantic import BaseModel, ConfigDict, EmailStr 
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from datetime import datetime
 
 class ClientRegister(BaseModel):
-    name: str
+    name: str = Field(min_length =1)
     email: EmailStr | None = None
     phone: str | None = None
     address: str | None = None
@@ -33,5 +33,6 @@ class ClientUpdate(BaseModel):
 class ClientPage(BaseModel):
     items: list[ClientOut]
     total : int 
-    has_next : bool
+    has_next: bool
+    next_cursor: int | None = None
 

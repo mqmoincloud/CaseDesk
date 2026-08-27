@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, selectinload
 from src.database import get_db
 from src.models import Staff, Client, Case
 from src.schemas import CaseRegister, CaseOut, CaseUpdate, CaseDetailOut,CasePageOut, CaseStatusUpdate
-from src.security import get_current_user
+from src.security import case_visible_to, get_current_user
 
 cases_router = APIRouter()
 
@@ -54,7 +54,8 @@ def case_registration (case_info: CaseRegister, db: Session = Depends(get_db), c
 @cases_router.get("/cases/{id}", response_model = CaseDetailOut)
 def case_details (id:int, db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user)):
 
-    current_case = db.query(Case).filter(Case.id == id, Case.staff_id == current_user.id, Case.deleted_at.is_(None)).first()
+    # Visible to the owner and to the assignee.
+    current_case = db.query(Case).filter(Case.id == id, case_visible_to(current_user), Case.deleted_at.is_(None)).first()
 
     if not current_case:
         raise HTTPException(
@@ -66,12 +67,12 @@ def case_details (id:int, db: Session = Depends(get_db), current_user: Staff = D
 
 
 @cases_router.get("/cases", response_model = CasePageOut)
-def all_cases (status:str | None = None, page:int = 1, limit: int =10,assignee:int | None = None, db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user)):
+def all_cases (status:str | None = None, before:int | None = None, limit: int =10, assignee:int | None = None, client_id:int | None = None, db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user)):
 
     all_cases = db.query(Case).options(
         selectinload(Case.client),
         selectinload(Case.assignee)
-    ).filter(Case.staff_id == current_user.id, Case.deleted_at.is_(None))
+    ).filter(case_visible_to(current_user), Case.deleted_at.is_(None))
 
     if status:
         all_cases = all_cases.filter(Case.status == status)
@@ -79,11 +80,22 @@ def all_cases (status:str | None = None, page:int = 1, limit: int =10,assignee:i
     if assignee:
         all_cases = all_cases.filter(Case.assignee_id == assignee)
 
+    if client_id:
+        all_cases = all_cases.filter(Case.client_id == client_id)
+
     total = all_cases.count()
 
-    items = all_cases.order_by(Case.id).offset((page - 1) * limit).limit(limit).all()
-    has_next = (page * limit) < total
-    return {"items": items, "total": total, "has_next": has_next}
+    # Same cursor paging as /clients - see the note there.
+    if before:
+        all_cases = all_cases.filter(Case.id < before)
+
+    rows = all_cases.order_by(Case.id.desc()).limit(limit + 1).all()
+
+    has_next = len(rows) > limit
+    items = rows[:limit]
+    next_cursor = items[-1].id if has_next else None
+
+    return {"items": items, "total": total, "has_next": has_next, "next_cursor": next_cursor}
 
 
 @cases_router.patch("/cases/{id}", response_model = CaseOut)

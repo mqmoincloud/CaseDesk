@@ -1,20 +1,45 @@
-# from src.models.todo import Todo
-# from src.models.client import Client
-# from src.models.staff import Staff
-
-
-
-
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy.orm import Session
-from src.database import get_db, Base, engine
+from src.database import get_db
 from src.config import config
-from src.models import Case, Client, Note, Staff
+
 
 from src.routers import auth_router, client_router, cases_router, notes_router
 
 app = FastAPI()
+
+@app.exception_handler(StarletteHTTPException)
+def http_error(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": {
+            "status": exc.status_code,
+            "message": exc.detail,
+            "fields": {},
+        }},
+    )
+
+@app.exception_handler(RequestValidationError)
+def validation_error(request: Request, exc: RequestValidationError):
+    fields = {}
+    for err in exc.errors():
+        name = err["loc"][-1]  
+        fields[name] = err["msg"]
+
+    return JSONResponse(
+        status_code=422,
+        content={"error": {
+            "status": 422,
+            "message": "Validation failed",
+            "fields": fields,
+        }},
+    )
+
+
 
 # This is how we include the different routers into the main FastAPI application.
 app.include_router(auth_router)

@@ -1,12 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from src.database import get_db
-from src.models import Staff, Client
+from src.models import Staff
 from src.security import hash_password, create_token, verify_password
-from src.schemas import TokenOut, StaffRegister, StaffLogin, StaffOut, StaffUpdate, ClientOut, ClientRegister
+from src.schemas import TokenOut, StaffRegister, StaffLogin, StaffOut
 from src.security import get_current_user
-
-#Kiyo ke apan Fastapi main mein use kar rahe hai toh idahr APIRouter lagega taake ham isko baad mein fastapi ke app ke sath add and merge kar saken 
 
 auth_router = APIRouter()
 
@@ -47,9 +45,10 @@ def staff_login(staff:StaffLogin, db :Session = Depends(get_db)):
     }
 
 
+@auth_router.get("/staff", response_model = list[StaffOut])
+def all_staff(db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user)):
 
-
-
-
-
-
+    # Not filtered by owner. A case can be assigned to any colleague, so the
+    # assignee dropdown has to show everyone. Only id, name and email go out -
+    # StaffOut has no password_hash field at all.
+    return db.query(Staff).order_by(Staff.name).all()

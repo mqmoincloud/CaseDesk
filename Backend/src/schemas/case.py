@@ -1,5 +1,5 @@
-from pydantic import BaseModel, ConfigDict, Field
-from src.schemas.client import ClientOut,ClientOutMini
+from pydantic import BaseModel, ConfigDict
+from src.schemas.client import ClientOutMini
 from src.schemas.staff import StaffOut
 from src.schemas.note import NoteOut
 from datetime import datetime
@@ -40,6 +40,7 @@ class CasePageOut(BaseModel):
     items : list[CaseOut]
     total: int
     has_next: bool
+    next_cursor: int | None = None
 
 class CaseStatusUpdate(BaseModel):
     status: str

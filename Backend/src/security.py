@@ -3,7 +3,8 @@ from fastapi import Header, HTTPException, Depends
 from datetime import datetime, timedelta, timezone
 from src.config import config
 from passlib.context import CryptContext
-from src.models import Staff
+from sqlalchemy import or_
+from src.models import Case, Staff
 from sqlalchemy.orm import Session
 from src.database import get_db
 
@@ -48,3 +49,7 @@ def get_current_user(token: str= Header(None), db : Session = Depends(get_db)):
         )
 
     return current_staff
+
+
+def case_visible_to(user):
+    return or_(Case.staff_id == user.id, Case.assignee_id == user.id)

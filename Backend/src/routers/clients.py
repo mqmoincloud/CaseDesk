@@ -37,18 +37,7 @@ def client_registration(client: ClientRegister, db: Session = Depends(get_db), c
 
 
 @client_router.get("/clients", response_model = ClientPage)
-def get_all_clients(search: str | None = None, page : int = 1, limit: int = 10, db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user) ):
-
-    # all_clients = db.query(Client).filter(
-    #     Client.staff_id == current_user.id ,
-    #     Client.deleted_at.is_(None)
-    #     ).all()
-    # Without .all(), this is a SQLAlchemy Query object, not the actual list of clients.
-    # It represents the query and can still be used to get/filter data.
-    #
-    # .all()   -> executes the query and returns ALL matching clients as a list
-    # .first() -> executes the query and returns the FIRST matching client
-    # .count() -> returns the NUMBER of matching clients
+def get_all_clients(search: str | None = None, before: int | None = None, limit: int = 10, db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user) ):
 
     all_clients = db.query(Client).filter(
         Client.staff_id == current_user.id ,
@@ -65,19 +54,27 @@ def get_all_clients(search: str | None = None, page : int = 1, limit: int = 10, 
 
 
     total = all_clients.count()
-    items = all_clients.order_by(Client.id).offset((page - 1) * limit).limit(limit).all()
-    has_next = (page * limit) < total
-    
-    # if not all_clients:
-    #      raise HTTPException(
-    #             status_code = 401,
-    #             detail = "Client Already Exist"
-    #         )
+
+    # Newest first, and paged by cursor rather than by offset. "before" is the
+    # id of the last row the caller already has, so a client created while they
+    # are paging gets a higher id and simply never appears in a later page.
+    # With offset the same insert would push everything down one place and the
+    # next page would repeat a row (US-17).
+    if before:
+        all_clients = all_clients.filter(Client.id < before)
+
+    # One extra row tells us whether there is another page, without a second query.
+    rows = all_clients.order_by(Client.id.desc()).limit(limit + 1).all()
+
+    has_next = len(rows) > limit
+    items = rows[:limit]
+    next_cursor = items[-1].id if has_next else None
 
     return {
         "items": items,
         "total": total,
-        "has_next": has_next
+        "has_next": has_next,
+        "next_cursor": next_cursor
     }
 
 

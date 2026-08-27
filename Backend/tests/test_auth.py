@@ -43,7 +43,7 @@ def test_short_password_returns_422(client):
     )
     assert response.status_code == 422
     # US-01 asks for a field-level error, not just a bare 422.
-    assert response.json()["detail"][0]["loc"][-1] == "password"
+    assert "password" in response.json()["error"]["fields"]
 
 
 def test_login_returns_a_bearer_token(client, ali):
@@ -109,3 +109,23 @@ def test_all_data_routes_reject_a_missing_token(client):
     for method, path in routes:
         response = client.request(method.upper(), path, json={})
         assert response.status_code == 401, f"{method.upper()} {path} gave {response.status_code}"
+
+
+def test_staff_list_is_available_for_the_assignee_picker(client, ali, sara):
+    response = client.get("/staff", headers=ali)
+    assert response.status_code == 200
+
+    names = [row["name"] for row in response.json()]
+    # Everyone, not just the caller - a case can be assigned to any colleague.
+    assert "Ali Khan" in names
+    assert "Sara Sheikh" in names
+
+
+def test_staff_list_never_exposes_password_hashes(client, ali):
+    body = client.get("/staff", headers=ali).json()
+    for row in body:
+        assert set(row.keys()) == {"id", "name", "email"}
+
+
+def test_staff_list_requires_a_token(client):
+    assert client.get("/staff").status_code == 401
