@@ -8,9 +8,7 @@ class CaseRegister(BaseModel):
     client_id: int
     assignee_id: int | None = None
     title: str
-    # status: str = Field(default="Intake")
     case_type: str 
-    # version: int
 
 class CaseOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -19,7 +17,6 @@ class CaseOut(BaseModel):
     title: str
     status: str
     client: ClientOutMini
-    # staff: StaffOut
     assignee: StaffOut | None = None
     case_type: str
     version: int
@@ -29,7 +26,6 @@ class CaseOut(BaseModel):
 class CaseUpdate(BaseModel):
     assignee_id: int | None = None
     title: str | None = None
-    # status: str | None = None
     case_type: str | None = None
     version: int | None = None
 

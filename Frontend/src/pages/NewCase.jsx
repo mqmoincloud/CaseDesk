@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { apiCall, errorMessage, removeToken } from "../api";
+import { button, buttonQuiet, card, errorText, heading, input, label, muted, page } from "../ui";
 
 const CASE_TYPES = ["Civil", "Criminal", "Family", "Property", "Labour"];
 
@@ -83,73 +84,58 @@ export default function NewCase() {
   }
 
   return (
-    <div className="max-w-md p-8">
-      <h1 className="text-2xl mb-6">New case</h1>
+    <div className={page}>
+      <h1 className={`${heading} mb-6`}>New case</h1>
 
-      <form onSubmit={handleSubmit}>
-        <label className="block mb-4">
-          Client
+      <form onSubmit={handleSubmit} className={`${card} p-6 max-w-md`}>
+        <div className="mb-4">
+          <label className={label}>Client</label>
           <select
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
             required
-            className="border p-2 w-full"
+            className={input}
           >
             <option value="">Choose a client</option>
             {clients.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <label className="block mb-4">
-          Title
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-            className="border p-2 w-full"
-          />
-        </label>
+        <div className="mb-4">
+          <label className={label}>Title</label>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} required className={input} />
+        </div>
 
-        <label className="block mb-4">
-          Type
-          <select
-            value={caseType}
-            onChange={(e) => setCaseType(e.target.value)}
-            className="border p-2 w-full"
-          >
+        <div className="mb-4">
+          <label className={label}>Type</label>
+          <select value={caseType} onChange={(e) => setCaseType(e.target.value)} className={input}>
             {CASE_TYPES.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <label className="block mb-4">
-          Assignee
-          <select
-            value={assigneeId}
-            onChange={(e) => setAssigneeId(e.target.value)}
-            className="border p-2 w-full"
-          >
+        <div className="mb-4">
+          <label className={label}>Assignee</label>
+          <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className={input}>
             <option value="">Nobody yet</option>
             {staff.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <p className="text-sm text-gray-600 mb-4">
-          New cases always start at Intake.
-        </p>
+        <p className={`${muted} mb-4`}>New cases always start at Intake.</p>
 
-        {error && <p className="text-red-700 mb-4">{error}</p>}
+        {error && <p className={`${errorText} mb-4`}>{error}</p>}
 
-        <div className="flex gap-4">
-          <button type="submit" className="border px-4 py-2">Create</button>
+        <div className="flex gap-3">
+          <button type="submit" className={button}>Create</button>
           <Link
             to={preselected ? `/clients/${preselected}` : "/cases"}
-            className="border px-4 py-2"
+            className={buttonQuiet}
           >
             Cancel
           </Link>

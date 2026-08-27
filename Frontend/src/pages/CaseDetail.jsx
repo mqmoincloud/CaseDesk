@@ -2,6 +2,10 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { apiCall, errorMessage, removeToken } from "../api";
+import {
+  button, buttonQuiet, card, errorText, heading, input, muted, page, rowLink,
+  statusBadge, subheading,
+} from "../ui";
 
 // The lifecycle is Intake -> Active -> Settled -> Closed, one step at a time.
 // We only show the button for the step that is allowed next. The API enforces
@@ -126,97 +130,92 @@ export default function CaseDetail() {
 
   if (notFound) {
     return (
-      <div className="p-8">
+      <div className={page}>
         <p className="mb-4">Case not found.</p>
-        <Link to="/cases" className="underline">Go to cases</Link>
+        <Link to="/cases" className={buttonQuiet}>Go to cases</Link>
       </div>
     );
   }
 
   if (!caseData) {
-    return <p className="p-8">Loading...</p>;
+    return <p className={`${page} ${muted}`}>Loading...</p>;
   }
 
   const next = NEXT_STATUS[caseData.status];
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl mb-6">{caseData.title}</h1>
-
-      <table className="mb-6">
-        <tbody>
-          <tr>
-            <td className="pr-6 py-1 text-gray-600">Client</td>
-            <td className="py-1">
-              <Link to={`/clients/${caseData.client.id}`} className="underline">
-                {caseData.client.name}
-              </Link>
-            </td>
-          </tr>
-          <tr>
-            <td className="pr-6 py-1 text-gray-600">Type</td>
-            <td className="py-1">{caseData.case_type}</td>
-          </tr>
-          <tr>
-            <td className="pr-6 py-1 text-gray-600">Status</td>
-            <td className="py-1">{caseData.status}</td>
-          </tr>
-          <tr>
-            <td className="pr-6 py-1 text-gray-600">Assignee</td>
-            <td className="py-1">
-              <select
-                value={caseData.assignee ? caseData.assignee.id : ""}
-                onChange={changeAssignee}
-                className="border p-1"
-              >
-                <option value="">Nobody</option>
-                {staff.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      <div className="mb-8">
-        {next ? (
-          <button onClick={moveStatus} className="border px-4 py-2">
-            Move to {next}
-          </button>
-        ) : (
-          <p className="text-gray-600">This case is closed and cannot be reopened.</p>
-        )}
+    <div className={page}>
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className={heading}>{caseData.title}</h1>
+          <p className={`${muted} mt-1`}>
+            <Link to={`/clients/${caseData.client.id}`} className={rowLink}>
+              {caseData.client.name}
+            </Link>
+            {" · "}{caseData.case_type}
+          </p>
+        </div>
+        <span className={statusBadge(caseData.status)}>{caseData.status}</span>
       </div>
 
-      {error && <p className="text-red-700 mb-6">{error}</p>}
+      {error && <p className={`${errorText} mb-4`}>{error}</p>}
 
-      <h2 className="text-xl mb-3">Notes ({caseData.notes.length})</h2>
+      <div className={`${card} p-6 mb-8 flex items-center gap-8`}>
+        <div>
+          <p className={`${muted} mb-1`}>Assignee</p>
+          <select
+            value={caseData.assignee ? caseData.assignee.id : ""}
+            onChange={changeAssignee}
+            className={input}
+          >
+            <option value="">Nobody</option>
+            {staff.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </div>
 
-      <form onSubmit={addNote} className="mb-6">
+        <div>
+          <p className={`${muted} mb-1`}>Status</p>
+          {next ? (
+            <button onClick={moveStatus} className={button}>Move to {next}</button>
+          ) : (
+            <p className="text-sm text-slate-500 py-2">
+              Closed cases cannot be reopened.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <h2 className={`${subheading} mb-3`}>Notes ({caseData.notes.length})</h2>
+
+      <form onSubmit={addNote} className="mb-6 max-w-2xl">
         <textarea
           value={noteBody}
           onChange={(e) => setNoteBody(e.target.value)}
           required
           rows={3}
           placeholder="Write a note"
-          className="border p-2 w-full max-w-2xl block mb-2"
+          className={`${input} mb-2`}
         />
-        <button type="submit" className="border px-4 py-2">Add note</button>
+        <button type="submit" className={button}>Add note</button>
       </form>
 
       {caseData.notes.length === 0 ? (
-        <p>No notes yet.</p>
+        <p className={muted}>No notes yet.</p>
       ) : (
-        <ul className="max-w-2xl">
+        <ul className="max-w-2xl space-y-2">
           {caseData.notes.map((note) => (
-            <li key={note.id} className="border p-3 mb-2">
-              <p className="mb-2">{note.body}</p>
-              <div className="flex justify-between text-sm text-gray-600">
-                <span>
-                  {note.author.name} — {new Date(note.created_at).toLocaleString()}
+            <li key={note.id} className={`${card} p-4`}>
+              <p className="text-sm text-slate-800 mb-2">{note.body}</p>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500">
+                  {note.author.name} · {new Date(note.created_at).toLocaleString()}
                 </span>
-                <button onClick={() => deleteNote(note.id)} className="underline">
+                <button
+                  onClick={() => deleteNote(note.id)}
+                  className="text-xs text-slate-500 hover:text-red-700"
+                >
                   Delete
                 </button>
               </div>

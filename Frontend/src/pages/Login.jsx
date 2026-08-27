@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiCall, saveToken } from "../api";
+import { button, card, errorText, heading, input, label } from "../ui";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -17,6 +18,8 @@ export default function Login() {
     const res = await apiCall("POST", "/auth/login", { email, password });
 
     if (res.status === 401) {
+      // The API gives the same message for a wrong password and an unknown
+      // email on purpose, so we do not guess which one it was.
       setError("Invalid email or password.");
       return;
     }
@@ -31,42 +34,47 @@ export default function Login() {
   }
 
   return (
-    <div className="max-w-sm mx-auto p-8">
-      <h1 className="text-2xl mb-6">Log in to CaseDesk</h1>
+    <div className="min-h-screen flex items-center justify-center p-8">
+      <div className="w-full max-w-sm">
+        <h1 className={`${heading} mb-6 text-center`}>CaseDesk</h1>
 
-      <form onSubmit={handleSubmit}>
-        <label className="block mb-4">
-          Email
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="border p-2 w-full"
-          />
-        </label>
+        <form onSubmit={handleSubmit} className={`${card} p-6`}>
+          <div className="mb-4">
+            <label className={label}>Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className={input}
+            />
+          </div>
 
-        <label className="block mb-4">
-          Password
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="border p-2 w-full"
-          />
-        </label>
+          <div className="mb-4">
+            <label className={label}>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className={input}
+            />
+          </div>
 
-        {error && <p className="text-red-700 mb-4">{error}</p>}
+          {error && <p className={`${errorText} mb-4`}>{error}</p>}
 
-        <button type="submit" className="border px-4 py-2">
-          Log in
-        </button>
-      </form>
+          <button type="submit" className={`${button} w-full`}>
+            Log in
+          </button>
+        </form>
 
-      <p className="mt-6">
-        No account? <Link to="/register" className="underline">Register</Link>
-      </p>
+        <p className="mt-6 text-center text-sm text-slate-600">
+          No account?{" "}
+          <Link to="/register" className="font-medium text-slate-900 hover:underline">
+            Register
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

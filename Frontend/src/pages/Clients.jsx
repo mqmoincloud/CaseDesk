@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiCall, removeToken } from "../api";
+import {
+  button, buttonQuiet, card, heading, input, muted, page, rowLink, table, td, th,
+} from "../ui";
 
 const LIMIT = 10;
 
@@ -20,7 +23,6 @@ export default function Clients() {
   const [cursor, setCursor] = useState(null);
   const [trail, setTrail] = useState([]);
 
-  // Runs on first render, and again whenever search or page changes.
   useEffect(() => {
     async function load() {
       let url = `/clients?search=${search}&limit=${LIMIT}`;
@@ -40,6 +42,9 @@ export default function Clients() {
       setNextCursor(res.data.next_cursor);
     }
 
+    // Wait 400ms before calling the server. React runs the cleanup below
+    // before the next run of this effect, so every keystroke cancels the timer
+    // the previous one set and only the last one actually fires.
     const timer = setTimeout(load, 400);
 
     return () => clearTimeout(timer);
@@ -65,64 +70,61 @@ export default function Clients() {
   }
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl mb-6">Clients</h1>
-
-      <div className="flex justify-between mb-4">
-        <input
-          value={search}
-          onChange={handleSearch}
-          placeholder="Search name, phone or email"
-          className="border p-2 w-80"
-        />
-        <Link to="/clients/new" className="border px-4 py-2">
-          New client
-        </Link>
+    <div className={page}>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className={heading}>Clients</h1>
+          <p className={muted}>{total} in total</p>
+        </div>
+        <Link to="/clients/new" className={button}>New client</Link>
       </div>
 
-      <table className="w-full border">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="border p-2 text-left">Name</th>
-            <th className="border p-2 text-left">Phone</th>
-            <th className="border p-2 text-left">Email</th>
-          </tr>
-        </thead>
-        <tbody>
-          {clients.map((client) => (
-            <tr key={client.id}>
-              <td className="border p-2">
-                <Link to={`/clients/${client.id}`} className="underline">
-                  {client.name}
-                </Link>
-              </td>
-              <td className="border p-2">{client.phone}</td>
-              <td className="border p-2">{client.email}</td>
+      <input
+        value={search}
+        onChange={handleSearch}
+        placeholder="Search name, phone or email"
+        className={`${input} max-w-sm mb-4`}
+      />
+
+      <div className={`${card} overflow-hidden`}>
+        <table className={table}>
+          <thead className="bg-slate-50">
+            <tr>
+              <th className={th}>Name</th>
+              <th className={th}>Phone</th>
+              <th className={th}>Email</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {clients.map((client) => (
+              <tr key={client.id} className="hover:bg-slate-50">
+                <td className={td}>
+                  <Link to={`/clients/${client.id}`} className={rowLink}>
+                    {client.name}
+                  </Link>
+                </td>
+                <td className={td}>{client.phone || "—"}</td>
+                <td className={td}>{client.email || "—"}</td>
+              </tr>
+            ))}
 
-      {clients.length === 0 && <p className="mt-4">No clients found.</p>}
+            {clients.length === 0 && (
+              <tr>
+                <td className={`${td} text-center text-slate-500`} colSpan={3}>
+                  No clients found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
-      <div className="flex gap-4 items-center mt-4">
-        <button
-          onClick={goPrevious}
-          disabled={trail.length === 0}
-          className="border px-4 py-2 disabled:opacity-40"
-        >
+      <div className="flex items-center gap-3 mt-4">
+        <button onClick={goPrevious} disabled={trail.length === 0} className={buttonQuiet}>
           Previous
         </button>
-
-        <span>
-          Page {trail.length + 1} — {total} clients
-        </span>
-
-        <button
-          onClick={goNext}
-          disabled={!hasNext}
-          className="border px-4 py-2 disabled:opacity-40"
-        >
+        <span className={muted}>Page {trail.length + 1}</span>
+        <button onClick={goNext} disabled={!hasNext} className={buttonQuiet}>
           Next
         </button>
       </div>

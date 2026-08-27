@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiCall, errorMessage, saveToken } from "../api";
+import { button, card, errorText, heading, input, label, muted } from "../ui";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -40,53 +41,58 @@ export default function Register() {
   }
 
   return (
-    <div className="max-w-sm mx-auto p-8">
-      <h1 className="text-2xl mb-6">Create an account</h1>
+    <div className="min-h-screen flex items-center justify-center p-8">
+      <div className="w-full max-w-sm">
+        <h1 className={`${heading} mb-6 text-center`}>Create an account</h1>
 
-      <form onSubmit={handleSubmit}>
-        <label className="block mb-4">
-          Name
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            className="border p-2 w-full"
-          />
-        </label>
+        <form onSubmit={handleSubmit} className={`${card} p-6`}>
+          <div className="mb-4">
+            <label className={label}>Name</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              className={input}
+            />
+          </div>
 
-        <label className="block mb-4">
-          Email
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="border p-2 w-full"
-          />
-        </label>
+          <div className="mb-4">
+            <label className={label}>Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className={input}
+            />
+          </div>
 
-        <label className="block mb-4">
-          Password
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="border p-2 w-full"
-          />
-          <span className="text-sm text-gray-600">8 to 72 characters</span>
-        </label>
+          <div className="mb-4">
+            <label className={label}>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className={input}
+            />
+            <p className={`${muted} mt-1`}>8 to 72 characters</p>
+          </div>
 
-        {error && <p className="text-red-700 mb-4">{error}</p>}
+          {error && <p className={`${errorText} mb-4`}>{error}</p>}
 
-        <button type="submit" className="border px-4 py-2">
-          Register
-        </button>
-      </form>
+          <button type="submit" className={`${button} w-full`}>
+            Register
+          </button>
+        </form>
 
-      <p className="mt-6">
-        Already have an account? <Link to="/login" className="underline">Log in</Link>
-      </p>
+        <p className="mt-6 text-center text-sm text-slate-600">
+          Already have an account?{" "}
+          <Link to="/login" className="font-medium text-slate-900 hover:underline">
+            Log in
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

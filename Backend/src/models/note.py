@@ -11,6 +11,5 @@ class Note(Base):
     staff_id = Column(ForeignKey("staff.id"), nullable = False)
     body = Column(String, nullable = False)
     created_at = Column(UTCDateTime, default=utcnow, nullable=False)
-    # updated_at = Column(UTCDateTime, default=utcnow, onupdate=utcnow, nullable=False)
     deleted_at = Column(UTCDateTime, nullable=True)
     author = relationship("Staff")

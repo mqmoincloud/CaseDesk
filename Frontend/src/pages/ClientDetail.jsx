@@ -2,6 +2,10 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { apiCall, removeToken } from "../api";
+import {
+  button, buttonQuiet, card, errorText, heading, muted, page, rowLink,
+  statusBadge, subheading, table, td, th,
+} from "../ui";
 
 export default function ClientDetail() {
   const { id } = useParams();
@@ -56,84 +60,81 @@ export default function ClientDetail() {
 
   if (notFound) {
     return (
-      <div className="p-8">
+      <div className={page}>
         <p className="mb-4">Client not found.</p>
-        <Link to="/clients" className="underline">Go to clients</Link>
+        <Link to="/clients" className={buttonQuiet}>Go to clients</Link>
       </div>
     );
   }
 
   if (!client) {
-    return <p className="p-8">Loading...</p>;
+    return <p className={`${page} ${muted}`}>Loading...</p>;
   }
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl mb-6">{client.name}</h1>
-
-      <table className="mb-6">
-        <tbody>
-          <tr>
-            <td className="pr-6 py-1 text-gray-600">Phone</td>
-            <td className="py-1">{client.phone || "-"}</td>
-          </tr>
-          <tr>
-            <td className="pr-6 py-1 text-gray-600">Email</td>
-            <td className="py-1">{client.email || "-"}</td>
-          </tr>
-          <tr>
-            <td className="pr-6 py-1 text-gray-600">Address</td>
-            <td className="py-1">{client.address || "-"}</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <div className="flex gap-4 mb-8">
-        <Link to={`/clients/${id}/edit`} className="border px-4 py-2">
-          Edit
-        </Link>
-        <button onClick={handleDelete} className="border px-4 py-2">
-          Delete
-        </button>
+    <div className={page}>
+      <div className="flex items-start justify-between mb-6">
+        <h1 className={heading}>{client.name}</h1>
+        <div className="flex gap-3">
+          <Link to={`/clients/${id}/edit`} className={buttonQuiet}>Edit</Link>
+          <button onClick={handleDelete} className={buttonQuiet}>Delete</button>
+        </div>
       </div>
 
-      {error && <p className="text-red-700 mb-6">{error}</p>}
+      {error && <p className={`${errorText} mb-4`}>{error}</p>}
 
-      <div className="flex justify-between items-center mb-3">
-        <h2 className="text-xl">Cases ({cases.length})</h2>
-        <Link to={`/cases/new?client_id=${id}`} className="border px-4 py-2">
-          New case for this client
+      <div className={`${card} p-6 mb-8`}>
+        <dl className="grid grid-cols-[7rem_1fr] gap-y-3 text-sm">
+          <dt className="text-slate-500">Phone</dt>
+          <dd className="text-slate-900">{client.phone || "—"}</dd>
+          <dt className="text-slate-500">Email</dt>
+          <dd className="text-slate-900">{client.email || "—"}</dd>
+          <dt className="text-slate-500">Address</dt>
+          <dd className="text-slate-900">{client.address || "—"}</dd>
+        </dl>
+      </div>
+
+      <div className="flex items-center justify-between mb-3">
+        <h2 className={subheading}>Cases ({cases.length})</h2>
+        <Link to={`/cases/new?client_id=${id}`} className={button}>
+          New case
         </Link>
       </div>
 
-      {cases.length === 0 ? (
-        <p>No cases for this client yet.</p>
-      ) : (
-        <table className="w-full border">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="border p-2 text-left">Title</th>
-              <th className="border p-2 text-left">Type</th>
-              <th className="border p-2 text-left">Status</th>
-              <th className="border p-2 text-left">Assignee</th>
+      <div className={`${card} overflow-hidden`}>
+        <table className={table}>
+          <thead className="bg-slate-50">
+            <tr>
+              <th className={th}>Title</th>
+              <th className={th}>Type</th>
+              <th className={th}>Status</th>
+              <th className={th}>Assignee</th>
             </tr>
           </thead>
           <tbody>
             {cases.map((c) => (
-              <tr key={c.id}>
-                <td className="border p-2">
-                  <Link to={`/cases/${c.id}`} className="underline">
-                    {c.title}
-                  </Link>
+              <tr key={c.id} className="hover:bg-slate-50">
+                <td className={td}>
+                  <Link to={`/cases/${c.id}`} className={rowLink}>{c.title}</Link>
                 </td>
-                <td className="border p-2">{c.case_type}</td>
-                <td className="border p-2">{c.status}</td>
-                <td className="border p-2">{c.assignee ? c.assignee.name : "-"}</td>
+                <td className={td}>{c.case_type}</td>
+                <td className={td}>
+                  <span className={statusBadge(c.status)}>{c.status}</span>
+                </td>
+                <td className={td}>{c.assignee ? c.assignee.name : "—"}</td>
               </tr>
             ))}
+
+            {cases.length === 0 && (
+              <tr>
+                <td className={`${td} text-center text-slate-500`} colSpan={4}>
+                  No cases for this client yet.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
-      )}
+      </div>
     </div>
   );
 }

@@ -13,14 +13,6 @@ client_router = APIRouter()
 @client_router.post("/clients/registration", response_model = ClientOut)
 def client_registration(client: ClientRegister, db: Session = Depends(get_db), current_user : Staff = Depends(get_current_user)):
 
-    # existin_client = db.query(Client).filter(client.email == Client.email).first()
-
-    # if existin_client : 
-    #     raise HTTPException(
-    #         status_code = 401,
-    #         detail = "Client Already Exist"
-    #     )
-
     new_client = Client(
         staff_id = current_user.id,
         name = client.name,
@@ -55,11 +47,6 @@ def get_all_clients(search: str | None = None, before: int | None = None, limit:
 
     total = all_clients.count()
 
-    # Newest first, and paged by cursor rather than by offset. "before" is the
-    # id of the last row the caller already has, so a client created while they
-    # are paging gets a higher id and simply never appears in a later page.
-    # With offset the same insert would push everything down one place and the
-    # next page would repeat a row (US-17).
     if before:
         all_clients = all_clients.filter(Client.id < before)
 

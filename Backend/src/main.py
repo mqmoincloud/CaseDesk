@@ -40,8 +40,6 @@ def validation_error(request: Request, exc: RequestValidationError):
     )
 
 
-
-# This is how we include the different routers into the main FastAPI application.
 app.include_router(auth_router)
 app.include_router(client_router)
 app.include_router(cases_router)
@@ -54,8 +52,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Base.metadata.create_all(bind=engine)
 
 @app.get("/")
 def home(db: Session = Depends(get_db)):
