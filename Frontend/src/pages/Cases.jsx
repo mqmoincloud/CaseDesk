@@ -23,6 +23,7 @@ export default function Cases() {
   const [staff, setStaff] = useState([]);
   const [status, setStatus] = useState("");
   const [assignee, setAssignee] = useState("");
+  const [owner, setOwner] = useState("");
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
 
@@ -68,6 +69,7 @@ export default function Cases() {
           before: cursor,
           status,
           assignee,
+          owner,
           client_id: clientId,
           search,
         })}`
@@ -90,7 +92,7 @@ export default function Cases() {
     const timer = setTimeout(load, 400);
 
     return () => clearTimeout(timer);
-  }, [status, assignee, search, clientId, cursor]);
+  }, [status, assignee, owner, search, clientId, cursor]);
 
   function resetPaging() {
     setCursor(null);
@@ -104,6 +106,11 @@ export default function Cases() {
 
   function changeAssignee(e) {
     setAssignee(e.target.value);
+    resetPaging();
+  }
+
+  function changeOwner(e) {
+    setOwner(e.target.value);
     resetPaging();
   }
 
@@ -191,6 +198,16 @@ export default function Cases() {
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
+
+        <select value={owner} onChange={changeOwner} className={`${input} w-full sm:w-48`}>
+          <option value="">Anyone's cases</option>
+          <option value={me.id}>Created by me</option>
+          {staff
+            .filter((s) => s.id !== me.id)
+            .map((s) => (
+              <option key={s.id} value={s.id}>Created by {s.name}</option>
+            ))}
+        </select>
       </div>
 
       <div className={`${card} ${tableWrap}`}>
@@ -201,6 +218,7 @@ export default function Cases() {
               <th className={th}>Client</th>
               <th className={th}>Type</th>
               <th className={th}>Status</th>
+              <th className={th}>Created by</th>
               <th className={th}>Assignee</th>
               <th className={th}>Last activity</th>
             </tr>
@@ -225,7 +243,11 @@ export default function Cases() {
                 <td className={td}>
                   <span className={statusBadge(c.status)}>{c.status}</span>
                 </td>
-                
+
+                <td className={td}>
+                  {c.owner.id === me.id ? "You" : c.owner.name}
+                </td>
+
                 <td className={td}>
                   {c.assignee ? c.assignee.name : "—"}
                 

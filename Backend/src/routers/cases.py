@@ -103,6 +103,7 @@ def all_cases(
     before: int | None = Query(None, ge=1),
     limit: int = Query(10, ge=1, le=100),
     assignee: int | None = Query(None, ge=1),
+    owner: int | None = Query(None, ge=1),
     client_id: int | None = Query(None, ge=1),
     search: str | None = Query(None, max_length=200),
     db: Session = Depends(get_db),
@@ -122,6 +123,11 @@ def all_cases(
 
     if assignee is not None:
         all_cases = all_cases.filter(Case.assignee_id == assignee)
+
+    # Who the case belongs to. An assignee sees other people's cases in this
+    # list, so "show me only mine" needs its own filter.
+    if owner is not None:
+        all_cases = all_cases.filter(Case.staff_id == owner)
 
     if client_id is not None:
         all_cases = all_cases.filter(Case.client_id == client_id)
