@@ -32,10 +32,11 @@ def test_404_uses_the_shape(client, ali):
     assert_error_shape(client.get("/clients/99999", headers=ali), 404)
 
 
-def test_409_duplicate_uses_the_shape(client, ali):
+def test_409_duplicate_uses_the_shape(client, ali, admin):
     response = client.post(
         "/auth/register",
         json={"name": "Ali", "email": "ali@example.com", "password": "password123"},
+        headers=admin,
     )
     assert_error_shape(response, 409)
 
@@ -85,3 +86,45 @@ def test_wrong_method_uses_the_shape(client, ali):
 )
 def test_every_route_family_reports_missing_auth_the_same_way(client, method, path):
     assert_error_shape(client.request(method.upper(), path, json={}), 401)
+
+
+def test_a_limit_outside_the_allowed_range_uses_the_shape(client, ali):
+    # limit is bounded by Query(ge=1, le=100), so FastAPI raises the same
+    # validation error as any bad body field - and it names the field.
+    response = client.get("/clients?limit=101", headers=ali)
+    assert_error_shape(response, 422)
+    assert "limit" in response.json()["error"]["fields"]
+
+
+# --- an unexpected crash uses the same shape ---
+
+
+def test_an_unexpected_error_uses_the_shape(client):
+    """NF-05 asks for one error shape across the whole API.
+
+    Only HTTPException and validation were handled before, so any bug answered in
+    FastAPI's own shape - meaning a front end taught to read data.error.message
+    everywhere found nothing there exactly when something had really broken.
+
+    Yahan ek route jaan-boojh kar phaad kar dekhte hain. raise_server_exceptions
+    ko band karna zaroori hai, warna TestClient exception ko aage phenk deta hai
+    handler chalne ke bajaye - bilkul waise hi jaise asli server pe hota hai.
+    """
+    from fastapi.testclient import TestClient
+
+    from src.main import app
+
+    @app.get("/boom-for-tests")
+    def boom():
+        raise RuntimeError("something broke")
+
+    with TestClient(app, raise_server_exceptions=False) as safe_client:
+        response = safe_client.get("/boom-for-tests")
+
+    assert response.status_code == 500
+
+    error = response.json()["error"]
+    assert error["status"] == 500
+    assert error["fields"] == {}
+    # The real cause belongs in the log, not in the response.
+    assert "something broke" not in error["message"]

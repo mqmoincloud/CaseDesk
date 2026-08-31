@@ -4,7 +4,7 @@
 def test_create_client_sets_timestamps(client, ali):
     response = client.post(
         "/clients/registration",
-        json={"name": "Ramesh", "email": "r@example.com", "phone": "999", "address": "Delhi"},
+        json={"name": "Ramesh", "email": "r@example.com", "phone": "9876543210", "address": "Delhi"},
         headers=ali,
     )
     assert response.status_code == 200
@@ -112,3 +112,84 @@ def test_search_matches_phone_and_email(client, ali):
 
     assert client.get("/clients?search=unique.person", headers=ali).json()["total"] == 1
     assert client.get("/clients?search=5551234", headers=ali).json()["total"] == 1
+
+
+def test_a_badly_formatted_phone_is_rejected(client, ali):
+    # US-04 - phone is format-validated. The rule lives on the schema, so the
+    # error names the field the same way every other validation error does.
+    response = client.post(
+        "/clients/registration",
+        json={"name": "Bad Phone", "phone": "not-a-phone!!!"},
+        headers=ali,
+    )
+    assert response.status_code == 422
+    assert "phone" in response.json()["error"]["fields"]
+
+
+def test_a_badly_formatted_phone_is_rejected_on_update_too(client, ali, ali_client_id):
+    # Validating only on create would let a bad number in through PATCH.
+    response = client.patch(
+        f"/clients/{ali_client_id}", json={"phone": "nope"}, headers=ali
+    )
+    assert response.status_code == 422
+    assert "phone" in response.json()["error"]["fields"]
+
+
+def test_sending_name_as_null_is_a_422_not_a_500(client, ali, ali_client_id):
+    # name is NOT NULL in the database. Leaving it out of a PATCH is fine;
+    # sending it as null used to reach the database and come back as a 500.
+    response = client.patch(f"/clients/{ali_client_id}", json={"name": None}, headers=ali)
+    assert response.status_code == 422
+    assert "name" in response.json()["error"]["fields"]
+
+
+def test_nullable_fields_can_still_be_cleared(client, ali, ali_client_id):
+    # email, phone and address are nullable columns, so null is a real
+    # instruction there - it clears the field.
+    response = client.patch(f"/clients/{ali_client_id}", json={"email": None}, headers=ali)
+    assert response.status_code == 200
+    assert response.json()["email"] is None
+
+
+def test_search_treats_a_percent_sign_as_text(client, ali):
+    # % is a wildcard in LIKE. Unescaped, searching for it matched every row.
+    client.post("/clients/registration", json={"name": "Plain Name"}, headers=ali)
+    assert client.get("/clients?search=%25", headers=ali).json()["total"] == 0
+
+    client.post("/clients/registration", json={"name": "100% Sure"}, headers=ali)
+    assert client.get("/clients?search=%25", headers=ali).json()["total"] == 1
+
+
+def test_search_treats_an_underscore_as_text(client, ali):
+    # _ matches any single character in LIKE.
+    client.post("/clients/registration", json={"name": "abc"}, headers=ali)
+    assert client.get("/clients?search=a_c", headers=ali).json()["total"] == 0
+
+
+# --- a client's owner has to come back in the response ---
+
+
+def test_a_client_carries_its_owner(client, ali, ali_client_id):
+    """An admin's list holds everyone's clients. Without this field it could
+    not say which client belonged to whom."""
+    body = client.get(f"/clients/{ali_client_id}", headers=ali).json()
+
+    assert body["owner"]["name"] == "Ali Khan"
+    # Id and name only - no reason to put a colleague's email on screen.
+    assert set(body["owner"].keys()) == {"id", "name"}
+
+
+def test_the_admin_sees_who_each_client_belongs_to(client, admin, ali, ali_client_id):
+    rows = client.get("/clients", headers=admin).json()["items"]
+    owners = {row["owner"]["name"] for row in rows}
+
+    assert owners == {"Ali Khan"}
+
+
+def test_email_is_lowercased_on_update_too(client, ali, ali_client_id):
+    """Create lowercased the address and update did not, so one field was
+    stored two different ways."""
+    client.patch(f"/clients/{ali_client_id}", json={"email": "R.Kumar@Example.COM"}, headers=ali)
+
+    body = client.get(f"/clients/{ali_client_id}", headers=ali).json()
+    assert body["email"] == "r.kumar@example.com"

@@ -93,3 +93,23 @@ def test_only_notes_on_my_own_cases_can_be_deleted(client, ali, sara, ali_case_i
 
     # US-14: ownership is the case's, so Sara must not reach it.
     assert client.delete(f"/notes/{note_id}", headers=sara).status_code == 404
+
+
+def test_an_empty_note_is_rejected(client, ali, ali_case_id):
+    response = client.post(f"/cases/{ali_case_id}/notes", json={"body": ""}, headers=ali)
+    assert response.status_code == 422
+    assert "body" in response.json()["error"]["fields"]
+
+
+def test_a_closed_case_cannot_take_a_new_note(client, ali, ali_case_id):
+    # 409, not 404: the case is still there and still readable, it just cannot
+    # take new work. A 404 would contradict the GET, which returns 200.
+    for status in ["Active", "Settled", "Closed"]:
+        client.patch(f"/cases/{ali_case_id}/status", json={"status": status}, headers=ali)
+
+    assert client.get(f"/cases/{ali_case_id}", headers=ali).status_code == 200
+
+    response = client.post(
+        f"/cases/{ali_case_id}/notes", json={"body": "after close"}, headers=ali
+    )
+    assert response.status_code == 409

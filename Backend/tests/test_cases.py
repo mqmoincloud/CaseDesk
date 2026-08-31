@@ -179,3 +179,18 @@ def test_cases_can_be_filtered_by_client(client, ali, ali_client_id, ali_case_id
 def test_client_filter_does_not_reach_across_users(client, ali, sara, ali_client_id, ali_case_id):
     # Passing someone else's client id must not surface their cases.
     assert client.get(f"/cases?client_id={ali_client_id}", headers=sara).json()["total"] == 0
+
+
+def test_a_blank_title_or_type_is_rejected(client, ali, ali_client_id):
+    for field in ["title", "case_type"]:
+        body = {"client_id": ali_client_id, "title": "T", "case_type": "Civil"}
+        body[field] = ""
+        response = client.post("/cases/registration", json=body, headers=ali)
+        assert response.status_code == 422
+        assert field in response.json()["error"]["fields"]
+
+
+def test_a_blank_title_is_rejected_on_update_too(client, ali, ali_case_id):
+    response = client.patch(f"/cases/{ali_case_id}", json={"title": ""}, headers=ali)
+    assert response.status_code == 422
+    assert "title" in response.json()["error"]["fields"]

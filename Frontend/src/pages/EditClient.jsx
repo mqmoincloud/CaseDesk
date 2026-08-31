@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { apiCall, errorMessage, removeToken } from "../api";
+import { apiCall, errorMessage } from "../api";
 import { button, buttonQuiet, card, errorText, heading, input, label, muted, page } from "../ui";
 
 export default function EditClient() {
@@ -22,14 +22,16 @@ export default function EditClient() {
     async function load() {
       const res = await apiCall("GET", `/clients/${id}`);
 
-      if (res.status === 401) {
-        removeToken();
-        navigate("/login");
+      if (res.status === 404) {
+        setNotFound(true);
+        setLoading(false);
         return;
       }
 
-      if (res.status === 404) {
-        setNotFound(true);
+      // With the server down res.data is null, so res.data.name would throw and
+      // setLoading(false) would never run, leaving the page on "Loading..."
+      if (!res.ok) {
+        if (res.status !== 401) setError(errorMessage(res));
         setLoading(false);
         return;
       }
@@ -44,9 +46,15 @@ export default function EditClient() {
     load();
   }, [id, navigate]);
 
+  // Set while the form is in flight, so a second click cannot send a
+  // second copy of the same request.
+  const [saving, setSaving] = useState(false);
   async function handleSubmit(e) {
     e.preventDefault();
+    if (saving) return;
+
     setError("");
+    setSaving(true);
 
     const body = {
       name: name,
@@ -56,12 +64,7 @@ export default function EditClient() {
     };
 
     const res = await apiCall("PATCH", `/clients/${id}`, body);
-
-    if (res.status === 401) {
-      removeToken();
-      navigate("/login");
-      return;
-    }
+    setSaving(false);
 
     if (res.status === 404) {
       setNotFound(true);
@@ -73,7 +76,7 @@ export default function EditClient() {
       return;
     }
 
-    if (res.status !== 200) {
+    if (!res.ok) {
       setError("Could not save the changes.");
       return;
     }
@@ -100,29 +103,31 @@ export default function EditClient() {
 
       <form onSubmit={handleSubmit} className={`${card} p-6 max-w-md`}>
         <div className="mb-4">
-          <label className={label}>Name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} required className={input} />
+          <label htmlFor="client-name" className={label}>Name</label>
+          <input id="client-name" value={name} onChange={(e) => setName(e.target.value)} required className={input} />
         </div>
 
         <div className="mb-4">
-          <label className={label}>Phone</label>
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} className={input} />
+          <label htmlFor="client-phone" className={label}>Phone</label>
+          <input id="client-phone" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={20} className={input} />
         </div>
 
         <div className="mb-4">
-          <label className={label}>Email</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={input} />
+          <label htmlFor="client-email" className={label}>Email</label>
+          <input id="client-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={input} />
         </div>
 
         <div className="mb-4">
-          <label className={label}>Address</label>
-          <input value={address} onChange={(e) => setAddress(e.target.value)} className={input} />
+          <label htmlFor="client-address" className={label}>Address</label>
+          <input id="client-address" value={address} onChange={(e) => setAddress(e.target.value)} className={input} />
         </div>
 
         {error && <p className={`${errorText} mb-4`}>{error}</p>}
 
-        <div className="flex gap-3">
-          <button type="submit" className={button}>Save</button>
+        <div className="flex flex-wrap gap-3">
+          <button type="submit" disabled={saving} className={button}>
+            {saving ? "Saving..." : "Save"}
+          </button>
           <Link to={`/clients/${id}`} className={buttonQuiet}>Cancel</Link>
         </div>
       </form>

@@ -37,7 +37,7 @@ def test_the_api_sends_the_offset(client, ali, ali_client_id):
 
 
 def test_updated_at_stays_aware_after_an_edit(client, ali, ali_client_id):
-    client.patch(f"/clients/{ali_client_id}", json={"phone": "999"}, headers=ali)
+    client.patch(f"/clients/{ali_client_id}", json={"phone": "9990001111"}, headers=ali)
 
     body = client.get(f"/clients/{ali_client_id}", headers=ali).json()
     assert datetime.fromisoformat(body["updated_at"]).tzinfo is not None

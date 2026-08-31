@@ -1,18 +1,24 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
 
-import { apiCall, removeToken } from "../api";
+import { apiCall, errorMessage } from "../api";
 import {
   button, buttonQuiet, card, errorText, heading, muted, page, rowLink,
-  statusBadge, subheading, table, td, th,
+  statusBadge, subheading, table, tableWrap, td, th,
 } from "../ui";
+
+// The API caps a page at 100. A client with more cases than this is not
+// something the screen pretends to handle - it says so instead.
+const CASE_LIMIT = 100;
 
 export default function ClientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const me = useOutletContext();
 
   const [client, setClient] = useState(null);
   const [cases, setCases] = useState([]);
+  const [caseTotal, setCaseTotal] = useState(0);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState("");
 
@@ -20,28 +26,40 @@ export default function ClientDetail() {
     async function load() {
       const res = await apiCall("GET", `/clients/${id}`);
 
-      if (res.status === 401) {
-        removeToken();
-        navigate("/login");
-        return;
-      }
-
       if (res.status === 404) {
         setNotFound(true);
         return;
       }
 
+      // A 401 has already sent us to the login screen. Anything else leaves
+      // res.data as the error envelope, not a client.
+      if (!res.ok) {
+        if (res.status !== 401) setError(errorMessage(res));
+        return;
+      }
+
       setClient(res.data);
 
-      const theirCases = await apiCall("GET", `/cases?client_id=${id}&limit=100`);
-      setCases(theirCases.data.items);
+      // limit is the API's maximum. If a client somehow has more cases than
+      // that, say so rather than showing a count that is quietly wrong.
+      const theirCases = await apiCall("GET", `/cases?client_id=${id}&limit=${CASE_LIMIT}`);
+
+      if (theirCases.ok) {
+        setCases(theirCases.data.items);
+        setCaseTotal(theirCases.data.total);
+      }
     }
 
     load();
-  }, [id, navigate]);
+  }, [id]);
 
   async function handleDelete() {
     setError("");
+
+    // There is no undelete anywhere in this app, so every delete asks first -
+    // the same as the one on the client list.
+    if (!window.confirm(`Delete ${client.name}?`)) return;
+
     const res = await apiCall("DELETE", `/clients/${id}`);
 
     if (res.status === 409) {
@@ -50,7 +68,7 @@ export default function ClientDetail() {
       return;
     }
 
-    if (res.status !== 200) {
+    if (!res.ok) {
       setError("Could not delete this client.");
       return;
     }
@@ -73,9 +91,9 @@ export default function ClientDetail() {
 
   return (
     <div className={page}>
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
         <h1 className={heading}>{client.name}</h1>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <Link to={`/clients/${id}/edit`} className={buttonQuiet}>Edit</Link>
           <button onClick={handleDelete} className={buttonQuiet}>Delete</button>
         </div>
@@ -91,17 +109,24 @@ export default function ClientDetail() {
           <dd className="text-slate-900">{client.email || "—"}</dd>
           <dt className="text-slate-500">Address</dt>
           <dd className="text-slate-900">{client.address || "—"}</dd>
+          {/* Admin only - for a staff member the answer is always "me". */}
+          {me.role === "admin" && (
+            <>
+              <dt className="text-slate-500">Owner</dt>
+              <dd className="text-slate-900">{client.owner.name}</dd>
+            </>
+          )}
         </dl>
       </div>
 
-      <div className="flex items-center justify-between mb-3">
-        <h2 className={subheading}>Cases ({cases.length})</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h2 className={subheading}>Cases ({caseTotal})</h2>
         <Link to={`/cases/new?client_id=${id}`} className={button}>
           New case
         </Link>
       </div>
 
-      <div className={`${card} overflow-hidden`}>
+      <div className={`${card} ${tableWrap}`}>
         <table className={table}>
           <thead className="bg-slate-50">
             <tr>
@@ -124,6 +149,15 @@ export default function ClientDetail() {
                 <td className={td}>{c.assignee ? c.assignee.name : "—"}</td>
               </tr>
             ))}
+
+            {caseTotal > cases.length && (
+              <tr>
+                <td className={`${td} text-slate-500`} colSpan={4}>
+                  Showing the first {cases.length} of {caseTotal}. Use the
+                  Cases page to see the rest.
+                </td>
+              </tr>
+            )}
 
             {cases.length === 0 && (
               <tr>

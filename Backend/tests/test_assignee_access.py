@@ -107,8 +107,8 @@ def test_assignee_cannot_reach_the_client_behind_the_case(client, sara, ali_clie
 
 # --- everyone else is still shut out ---
 
-def test_a_third_staff_member_still_sees_nothing(client, ali, sara, assigned_case):
-    raj = register_and_login(client, "Raj Mehta", "raj@example.com")
+def test_a_third_staff_member_still_sees_nothing(client, ali, sara, admin, assigned_case):
+    raj = register_and_login(client, "Raj Mehta", "raj@example.com", admin)
 
     assert client.get(f"/cases/{assigned_case}", headers=raj).status_code == 404
     assert client.get("/cases", headers=raj).json()["total"] == 0
@@ -123,3 +123,21 @@ def test_unassigning_takes_the_case_away_again(client, ali, sara, assigned_case)
     client.patch(f"/cases/{assigned_case}", json={"assignee_id": None}, headers=ali)
 
     assert client.get(f"/cases/{assigned_case}", headers=sara).status_code == 404
+
+
+def test_the_case_says_who_owns_it(client, ali, sara, assigned_case):
+    """The UI needs this to decide what to render for an assignee.
+
+    Without an owner on the response the frontend cannot tell "this is mine"
+    from "I am only assigned to it", and would have to offer every control and
+    let the API reject half of them.
+    """
+    body = client.get(f"/cases/{assigned_case}", headers=sara).json()
+
+    assert body["owner"]["name"] == "Ali Khan"
+    assert body["assignee"]["name"] == "Sara Sheikh"
+
+
+def test_the_owner_is_on_the_list_rows_too(client, ali, assigned_case):
+    row = client.get("/cases", headers=ali).json()["items"][0]
+    assert row["owner"]["name"] == "Ali Khan"

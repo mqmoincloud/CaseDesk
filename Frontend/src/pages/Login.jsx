@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import { apiCall, saveToken } from "../api";
-import { button, card, errorText, heading, input, label } from "../ui";
+import { button, card, errorText, heading, input, label, muted } from "../ui";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -11,11 +11,18 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
+  // Set while the form is in flight, so a second click cannot send a
+  // second copy of the same request.
+  const [saving, setSaving] = useState(false);
   async function handleSubmit(e) {
     e.preventDefault();
+    if (saving) return;
+
     setError("");
+    setSaving(true);
 
     const res = await apiCall("POST", "/auth/login", { email, password });
+    setSaving(false);
 
     if (res.status === 401) {
       // The API gives the same message for a wrong password and an unknown
@@ -24,7 +31,7 @@ export default function Login() {
       return;
     }
 
-    if (res.status !== 200) {
+    if (!res.ok) {
       setError("Something went wrong. Is the server running?");
       return;
     }
@@ -38,10 +45,11 @@ export default function Login() {
       <div className="w-full max-w-sm">
         <h1 className={`${heading} mb-6 text-center`}>CaseDesk</h1>
 
-        <form onSubmit={handleSubmit} className={`${card} p-6`}>
+        <form onSubmit={handleSubmit}  className={`${card} p-6`}>
           <div className="mb-4">
-            <label className={label}>Email</label>
+            <label className={label} htmlFor="login-email">Email</label>
             <input
+              id="login-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -51,8 +59,9 @@ export default function Login() {
           </div>
 
           <div className="mb-4">
-            <label className={label}>Password</label>
+            <label className={label} htmlFor="login-password">Password</label>
             <input
+              id="login-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -63,16 +72,13 @@ export default function Login() {
 
           {error && <p className={`${errorText} mb-4`}>{error}</p>}
 
-          <button type="submit" className={`${button} w-full`}>
-            Log in
+          <button type="submit" disabled={saving} className={`${button} w-full`}>
+            {saving ? "Signing in..." : "Log in"}
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-slate-600">
-          No account?{" "}
-          <Link to="/register" className="font-medium text-slate-900 hover:underline">
-            Register
-          </Link>
+        <p className={`mt-6 text-center ${muted}`}>
+          Accounts are created by an admin.
         </p>
       </div>
     </div>

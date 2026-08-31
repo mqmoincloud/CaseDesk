@@ -57,7 +57,7 @@ def fifty_cases(client, ali, sara, db):
 def test_a_fifty_row_page_stays_at_a_handful_of_queries(client, ali, fifty_cases, count_queries):
     count_queries.clear()
 
-    body = client.get(f"/cases?page=1&limit={PAGE_SIZE}", headers=ali).json()
+    body = client.get(f"/cases?limit={PAGE_SIZE}", headers=ali).json()
 
     # Touch every name, which is what the real response does when it serialises.
     names = [(row["client"]["name"], row["assignee"]) for row in body["items"]]
@@ -75,11 +75,11 @@ def test_a_fifty_row_page_stays_at_a_handful_of_queries(client, ali, fifty_cases
 def test_the_query_count_does_not_grow_with_the_page_size(client, ali, fifty_cases, count_queries):
     """The real N+1 check: ten rows and fifty rows must cost the same."""
     count_queries.clear()
-    client.get("/cases?page=1&limit=10", headers=ali).json()
+    client.get("/cases?limit=10", headers=ali).json()
     small = len(count_queries)
 
     count_queries.clear()
-    client.get(f"/cases?page=1&limit={PAGE_SIZE}", headers=ali).json()
+    client.get(f"/cases?limit={PAGE_SIZE}", headers=ali).json()
     large = len(count_queries)
 
     assert small == large, f"10 rows cost {small} queries, {PAGE_SIZE} rows cost {large}"

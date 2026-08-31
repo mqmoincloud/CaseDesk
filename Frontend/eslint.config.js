@@ -18,4 +18,10 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  {
+    // Test files get describe/it/expect without importing them (globals: true in
+    // vite.config.js). Without this eslint calls each one undefined.
+    files: ['**/*.test.{js,jsx}', 'src/test-setup.js'],
+    languageOptions: { globals: globals.vitest },
+  },
 ])

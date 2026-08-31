@@ -88,3 +88,42 @@ def test_deleted_client_id_is_rejected_when_opening_a_case(client, ali, ali_clie
         headers=ali,
     )
     assert response.status_code == 404
+
+
+def test_the_staff_picker_does_not_hand_out_email_addresses(client, ali):
+    # /staff fills the assignee dropdown, which needs a name and an id. It
+    # used to send every colleague's email to every logged-in user.
+    body = client.get("/staff", headers=ali).json()
+
+    assert body
+    for person in body:
+        assert set(person.keys()) == {"id", "name"}
+
+
+def test_an_assignee_is_not_shown_the_owners_email(client, ali, sara, ali_client_id):
+    # An assignee can see the case but not the client behind it. The owner and
+    # assignee blocks used to carry email addresses along for the ride.
+    sara_id = client.get("/me", headers=sara).json()["id"]
+    client.post(
+        "/cases/registration",
+        json={
+            "client_id": ali_client_id,
+            "title": "Shared",
+            "case_type": "Civil",
+            "assignee_id": sara_id,
+        },
+        headers=ali,
+    )
+
+    row = client.get("/cases", headers=sara).json()["items"][0]
+
+    assert set(row["owner"].keys()) == {"id", "name"}
+    assert set(row["assignee"].keys()) == {"id", "name"}
+
+
+def test_only_an_admin_can_read_the_full_staff_list(client, ali, admin):
+    assert client.get("/admin/staff", headers=ali).status_code == 403
+
+    body = client.get("/admin/staff", headers=admin).json()
+    assert "email" in body[0]
+    assert "password_hash" not in body[0]

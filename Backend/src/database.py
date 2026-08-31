@@ -14,15 +14,7 @@ localSession = sessionmaker(bind = engine)
 
 Base = declarative_base()
 
-
 class UTCDateTime(TypeDecorator):
-    """A datetime column that is always UTC and always timezone-aware.
-
-    SQLite has no timezone-aware type - it drops the offset on the way in and
-    hands back a naive datetime on the way out. This puts the timezone back at
-    the edges: everything is converted to UTC before it is written, and comes
-    back tagged as UTC.
-    """
 
     impl = DateTime
     cache_ok = True
@@ -45,13 +37,17 @@ class UTCDateTime(TypeDecorator):
 
 
 def utcnow():
-    """Default for created_at / updated_at.
 
-    Python-side rather than server_default=func.now(): SQLite's CURRENT_TIMESTAMP
-    never passes through UTCDateTime above, so those values would skip the
-    conversion entirely.
-    """
     return datetime.now(timezone.utc)
+
+def like_term(search):
+
+    cleaned = search.lower()
+    cleaned = cleaned.replace("\\", "\\\\")
+    cleaned = cleaned.replace("%", "\\%")
+    cleaned = cleaned.replace("_", "\\_")
+    return f"%{cleaned}%"
+
 
 def get_db():
     db = localSession()

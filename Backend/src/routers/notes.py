@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from src.database import get_db
 from src.schemas import NoteRegister, NoteOut
 from src.models import Staff, Case, Note
-from src.security import case_visible_to, get_current_user
+from src.security import case_visible_to, get_current_user, owned_by
 from datetime import datetime, timezone
 
 
@@ -22,6 +22,12 @@ def create_note(id: int,note_info: NoteRegister , db: Session = Depends(get_db),
             detail = "Case not found"
             )
 
+    if current_case.status == "Closed" :
+        raise HTTPException(
+            status_code = 409,
+            detail = "Case is closed"
+            )
+
     new_note = Note(
         case_id = id,
         staff_id = current_user.id,
@@ -38,9 +44,7 @@ def create_note(id: int,note_info: NoteRegister , db: Session = Depends(get_db),
 @notes_router.delete("/notes/{id}", response_model = NoteOut)
 def delete_note(id: int, db: Session = Depends(get_db), current_user: Staff = Depends(get_current_user)):
 
-    # Deliberately owner-only. US-14 says "only notes on cases I own", so an
-    # assignee can add a note but cannot remove one.
-    current_note = db.query(Note).join(Case).filter(Note.id == id, Case.staff_id == current_user.id, Note.deleted_at.is_(None)).first()
+    current_note = db.query(Note).join(Case).filter(Note.id == id, owned_by(current_user, Case), Case.deleted_at.is_(None), Note.deleted_at.is_(None)).first()
 
     if not current_note : 
         raise HTTPException(
@@ -54,25 +58,3 @@ def delete_note(id: int, db: Session = Depends(get_db), current_user: Staff = De
     db.refresh(current_note)
 
     return current_note
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

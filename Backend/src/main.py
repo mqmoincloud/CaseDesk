@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from src.database import get_db
 from src.config import config
 
-
 from src.routers import auth_router, client_router, cases_router, notes_router
 
 app = FastAPI()
@@ -40,6 +39,19 @@ def validation_error(request: Request, exc: RequestValidationError):
     )
 
 
+@app.exception_handler(Exception)
+def unexpected_error(request: Request, exc: Exception):
+
+    return JSONResponse(
+        status_code=500,
+        content={"error": {
+            "status": 500,
+            "message": "Something went wrong.",
+            "fields": {},
+        }},
+    )
+
+
 app.include_router(auth_router)
 app.include_router(client_router)
 app.include_router(cases_router)
@@ -55,4 +67,4 @@ app.add_middleware(
 
 @app.get("/")
 def home(db: Session = Depends(get_db)):
-    return {"message": "DB Connected Fine !!"}
+    return {"message": "DB Connected !!"}

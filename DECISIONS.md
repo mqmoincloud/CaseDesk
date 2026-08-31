@@ -18,7 +18,11 @@ The one thing it costs me is timezone-aware timestamps, which NF-06 asks for.
 SQLite has no column type that stores an offset. I worked around it rather than
 switching databases - see the UTC timestamps entry below. Postgres would have
 given me `TIMESTAMPTZ` and no workaround at all. If this ever went live that is
-the reason I would switch, and switching is a `DB_URL` change plus a driver.
+the reason I would switch. Switching is not only a `DB_URL` change, though I
+first wrote that it was: `database.py` passes `check_same_thread=False`, which
+is a SQLite-only connect argument, and `get_current_user` compares an integer
+column against the `sub` claim, which is a string - SQLite coerces that and
+Postgres does not. Both would have to go.
 
 ---
 
@@ -89,8 +93,15 @@ jwt.io and read it. So there is no reason to put anything extra in.
 The brief allows either one. Two things went wrong along the way and both are
 now handled in code:
 
-1. bcrypt refuses passwords longer than 72 bytes. So `StaffRegister.password`
-   has `max_length=72` and a long password gets a proper 422 instead of a 500.
+1. bcrypt 72 bytes se lamba password chupchaap kaat deta hai - mana nahi
+   karta. So every place a password arrives has `max_length=72`:
+   `StaffRegister`, `StaffUpdate` and `PasswordChange`.
+
+   This entry claimed that was true long before it was. `StaffRegister` had
+   only `min_length=8`, so a 100-character password was accepted, bcrypt kept
+   the first 72, and anyone who knew those 72 could log in with any ending at
+   all. Written down as done, never written in code - which is worse than
+   leaving it out of the doc, because nobody goes looking for it again.
 2. passlib 1.7.4 crashes with bcrypt 4.1 and newer, because it looks for an
    attribute that got removed. That is why the version is pinned in
    `requirements.txt`, with a comment explaining it.
@@ -232,8 +243,9 @@ later, but it growing with the page size never would be.
 
 ### Tests: pytest against a real database
 
-**Decided** — pytest, a separate `pytest_casedesk.db` file, tables created and
-dropped for each test, and `app.dependency_overrides` to point the app at it.
+**Decided** — pytest, a separate `pytest_casedesk.db` file, the schema built
+once by `alembic upgrade head`, tables emptied between tests, and
+`app.dependency_overrides` to point the app at it.
 **Rejected** — Mocking the session. Using my normal development database.
 
 NF-03 asks for a real database. Also, most of what matters in this project *is*
@@ -244,9 +256,20 @@ the bugs.
 only, and the whole app moves to the test database without me changing a single
 route.
 
-Dropping the tables between tests means a test can check a count without caring
-which tests ran before it. It makes the suite a few seconds slower and I think
-that is worth it.
+Clearing the tables between tests means a test can check a count without
+caring which tests ran before it, and the order the tests run in stops
+mattering.
+
+The first version dropped and recreated the tables for every test, with
+`create_all()`. That was wrong in a way I did not see for a while: it builds
+the schema from the models, so the migrations were never run by anything. A
+migration could be broken, missing, or drifted from the models and all of the
+tests would still pass - which is the opposite of what NF-02 asks for.
+
+Now a session fixture runs `alembic upgrade head` once, and each test empties
+the tables afterwards. The schema under test is the one the migrations
+produce, and `test_migrations.py` additionally checks that the downgrades run
+and that the two descriptions still agree.
 
 ---
 
@@ -361,3 +384,451 @@ What has not changed: someone who is neither owner nor assignee still gets a
 404 everywhere, search still never crosses users, and clients are still
 owner-only. There is a test for each of those, and one that checks the case
 disappears again the moment it is unassigned.
+
+---
+
+### An admin role, which the brief says not to build
+
+**Decided** — Two roles in a `staff.role` column. Admin sees and manages
+everything and is the only one who can create staff accounts.
+**Rejected** — Staying with "owns it or doesn't", which is what the brief asks
+for.
+
+The brief lists "roles or permission levels beyond owns it or doesn't" under Out
+of scope. This was asked for anyway, so it is here - but I want it on the record
+that it is a deliberate departure, not something I missed.
+
+The part worth explaining is where the role is checked. There are only two
+places, both in `security.py`:
+
+`require_admin` guards the admin-only routes. It answers "may this person be
+here at all", so it returns 403, not 404 - unlike a client or a case, there is
+no record whose existence needs hiding.
+
+`owned_by` is the ownership filter that every list and lookup already went
+through. For an admin it returns `true()`, a SQL condition that is always
+satisfied, so the filter still runs and simply excludes nothing.
+
+That second one is why this was a small change rather than a large one. Nine
+places had `staff_id == current_user.id` written out by hand. If I had put
+`if admin` in all nine, the tenth endpoint someone adds would have been the one
+that forgot. Replacing them with one helper means "an admin sees everything" is
+written once, and any new query gets it for free.
+
+Two smaller decisions came with it:
+
+`/auth/register` became admin-only, so the first admin cannot come from the API.
+The seed writes it directly, the same way the test fixtures do. Without that row
+nobody could ever register anyone.
+
+A case now belongs to the client's owner rather than to whoever created it. For
+a staff member those are the same person, so nothing changed for them. For an
+admin opening a case on someone's behalf it is what keeps the case with that
+staff member instead of stranding it on the admin account.
+
+### Assignment history in its own table, not two columns on the case
+
+The cases list needs one line under the assignee: "you assigned" or "Sara
+assigned". That alone would have been two columns on `cases` -
+`assigned_by_id` and `assigned_at` - overwritten on every change.
+
+It is a table instead, `case_assignments`, one row per assignment. The reason
+is what comes next: a case page and a client page that show what happened and
+when. Two columns can answer "who assigned this"; only rows can answer "who
+assigned it before that". Overwriting throws away the thing the timeline is
+made of, and it cannot be recovered later.
+
+The table has no `updated_at` and no `deleted_at`. Its rows are events - they
+happen once and never change - and a column that tracks edits on something
+that is never edited only invites code to edit it.
+
+`assignee_id` is nullable, and a null row means the assignee was removed.
+Treating unassign as an event rather than an absence is what keeps the gap
+visible in the timeline instead of making the case look untouched.
+
+Rows are written in exactly two places, the create and the update endpoint, and
+the update one only writes when the value actually changed - re-saving the same
+assignee is not an event. `CaseOut` carries `last_assignment` for the list and
+`CaseDetailOut` carries the full `assignments` for the case page, both loaded
+with `selectinload` so the query count stays flat.
+
+### Status history: the same shape, one table over
+
+`case_status_changes` is `case_assignments` again - append-only rows, an event
+each, written from the one endpoint that can cause them. It keeps both ends of
+the move, `from_status` and `to_status`, rather than only the new one, so a row
+reads on its own without walking back through the table.
+
+Its first row per case is not a transition at all: `from_status` is null, which
+means the case opened. Without it the timeline starts halfway through - a case
+that never left Intake would have no history, and one that moved once would
+look like it began at Active.
+
+Two parallel tables rather than one `case_events` with a `kind` column. The
+generic version would have taken less schema and more code: every read would
+filter by kind and every row would carry the columns of whichever event it is
+not. The two tables stay honest about their own shapes, and the merged feed the
+client page needs is a union at read time, which is where merging belongs.
+
+### Removing a staff member is a soft delete, and it can be refused
+
+The obvious version deletes the row. It cannot be that here. Notes carry their
+author, and both history tables carry who did the thing - `assigned_by_id`,
+`changed_by_id`. Delete the staff row and every one of those points at nobody.
+SQLite does not enforce foreign keys by default, so nothing would complain at
+write time; the list would simply start returning 500s later, from a query that
+looks unrelated. So `deleted_at`, the same as clients and cases.
+
+Three refusals sit in front of it, and each one exists because of a way the app
+could otherwise be left broken or unattended:
+
+An admin cannot change their own role. The last admin demoting itself leaves an
+app where nobody can promote anybody - unreachable except by editing the
+database by hand. Changing *another* admin's role is fine; there is a way back
+from that.
+
+An admin cannot remove their own account, for the same reason one step further
+along.
+
+Nobody can be removed while they still own live clients or cases. Their work
+would belong to no one - visible to an admin, tended by nobody. It is the rule
+`/clients` already applies to a client with cases: move the work first, then
+remove the account. It also means the seeded staff cannot be removed until
+their clients are, which is correct rather than inconvenient.
+
+`get_current_user` checks `deleted_at` too. A token issued before the account
+was removed stays cryptographically valid until it expires, so without that
+check a removed account keeps working for up to thirty minutes.
+
+---
+
+### Concurrent edits: a version the caller sends back
+
+**Decided** — `PATCH /cases/{id}` takes the `version` the caller was looking
+at. Stale means `409`. The column moves on by one on every successful update,
+and nobody outside the router can write it.
+**Rejected** — Leaving US-21 alone. Locking the row in the database.
+
+The column, the request field and the response field existed before any of
+this did, which was the worst of both: the API looked like it had optimistic
+locking, and the `setattr` loop was writing whatever number arrived. Sending
+`{"version": 999}` simply stored 999, and a stale update overwrote silently.
+A feature that looks finished and is not is worse than one that is missing.
+
+`data.pop("version")` is the other half. The version arrives to be *read*,
+never to be written; without the pop, the field that guards the row is the one
+field the caller can set to anything.
+
+The first version of this was wrong in a way that took a threaded test to see -
+see the entry below.
+
+A database-level lock would also work and would be stricter. It also holds a
+transaction open across a user's thinking time, which is exactly what
+optimistic locking exists to avoid.
+
+---
+
+### The token travels in `Authorization`, not a header called `token`
+
+**Decided** — `HTTPBearer` with `auto_error=False`, so the token arrives as
+`Authorization: Bearer <token>`.
+**Rejected** — Keeping the custom `token` header. Using `auto_error=True`.
+
+The custom header worked. What it did not do was tell anyone else about
+itself: FastAPI only puts a security scheme in the OpenAPI document when the
+dependency is one it recognises, so `/docs` had no **Authorize** button, and
+`token` appeared on every route as an ordinary optional parameter. The
+published spec said authentication was optional everywhere, which is the
+opposite of US-03, and the interactive docs could not call a single protected
+route.
+
+`auto_error=False` is the part worth pointing at. Left on, FastAPI raises its
+own error for a missing header - a `403`, in its own shape. NF-05 says every
+failure comes back looking the same, so the missing case has to reach my own
+code and become the same `401` envelope as everything else.
+
+`get_current_user` also changed from calling `verify_token(token)` by hand to
+`Depends(verify_token)`. That is what puts it in the dependency graph, which
+is what FastAPI reads when it decides a route is protected.
+
+---
+
+### Where a check goes: shape at the edge, state in the router
+
+**Decided** — Anything answerable from the request alone lives on the schema
+or on `Query`. Anything needing the database lives in the router.
+**Rejected** — Validating in the router because that is where the `raise` was
+already convenient.
+
+I wrote several of these checks in the router first, and each time the same
+four things went wrong. The error came back with an empty `fields` object, so
+it broke the NF-05 shape that names the offending field. It did not appear in
+`/docs`. It covered `POST` and not `PATCH`, because those are two functions.
+And it needed its own `None` handling - the phone check crashed with a
+`TypeError` on a client that simply had no phone.
+
+Moved to the schema, one line does all four. `Field(min_length=1)`,
+`Field(pattern=PHONE)`, `Literal[...]` and `Query(ge=1, le=100)` each produce
+a 422 with the field named, show up in the OpenAPI document, apply everywhere
+the schema is used, and skip `None` on their own when the field is optional.
+
+The split is the question "does answering this need a row?". Is the body
+empty, is the phone shaped like a phone, is `limit` between 1 and 100, is
+`"Banana"` a status - none of those need the database. Does this case exist,
+is it mine, is it closed - all of those do.
+
+The one nuance is `null`. A field being absent and a field being `null` are
+different requests, and only some columns can take the second: `email` is
+nullable so `null` clears it, `name` is not so `null` is a 422. A
+`field_validator` handles that, because it runs on a value that was sent and
+never on a default.
+
+---
+
+### An assignee sees names, not email addresses
+
+**Decided** — A second, smaller `StaffMini` shape (id and name) for the
+assignee picker and for every staff block embedded in a case, note or history
+row. `StaffOut`, with the email address, is admin-only.
+**Rejected** — One shape everywhere.
+
+Widening visibility to the assignee was deliberate and is set out above. What
+I had not thought about is what travels with a case once it is visible. Every
+`owner`, `assignee`, `author` and `changed_by` block was a full `StaffOut`, so
+an assignee - who is explicitly refused the client behind the case - was still
+being handed their colleagues' email addresses along the way. `GET /staff`
+did the same thing for the dropdown, to everybody.
+
+So `/staff` answers with what a dropdown needs, and `/admin/staff` answers
+with what the account-management screen needs. Two routes rather than one that
+changes shape depending on who is asking: a response model that varies by role
+is a thing you have to read the body of the function to understand, and it
+cannot be described in OpenAPI at all.
+
+This is not the duplication that `/admin/cases` was. That one returned exactly
+the same rows as `/cases` for the same caller, because `case_visible_to`
+already returns `true()` for an admin - it was forty-five copied lines that
+answered a question already answered. These two return different columns to
+different readers.
+
+---
+
+### Removing a staff member counts assigned work, not just owned work
+
+**Decided** — `DELETE /staff/{id}` refuses while the account owns clients or
+cases **or** is the assignee of any live case.
+**Rejected** — Unassigning their cases automatically on the way out.
+
+The first version only counted ownership, so someone with no clients of their
+own could be removed while still holding twenty cases. The rows stayed pointing
+at them: the list kept showing their name, but they were gone from `/staff`, so
+the case page's dropdown had no option matching the stored id and rendered
+blank. The screen said "nobody", the database said otherwise.
+
+Unassigning automatically would have been quieter and worse - it decides on
+someone's behalf where the work goes. Refusing makes the person doing the
+removal answer that question first, which is the same reason a client with live
+cases cannot be deleted either.
+
+---
+
+### A closed case is read-only, not just note-proof
+
+**Decided** — `Closed` refuses new notes, and refuses title, type and assignee
+changes too. Deleting it is still allowed.
+**Rejected** — Leaving edits open. Blocking the delete as well.
+
+Only notes were blocked before, which drew the line in an odd place: you could
+not write on a closed case, but you could hand it to a new person. That makes
+the case look like live work to whoever it lands on.
+
+Delete stays open on purpose. A case entered by mistake needs a way out
+whatever its status, and refusing that would leave rows nobody can ever remove -
+the same trap the missing delete route created for clients.
+
+---
+
+### Password changes invalidate existing tokens
+
+**Decided** — `staff.token_version`, an integer that goes up on every password
+change and travels inside the token. `get_current_user` compares the two.
+**Rejected** — Storing sessions server-side. Leaving it alone as a known JWT
+tradeoff.
+
+A JWT is valid until it expires, and nothing in the token knows the password
+behind it changed. So a stolen token kept working for its full thirty minutes
+after the victim changed their password - which is the one moment they were
+trying to stop exactly that.
+
+One integer is enough. It does not turn the token into a session: there is
+still no per-request lookup added, because `get_current_user` was already
+loading the staff row to check `deleted_at`. Admin resets bump it too, for the
+same reason.
+
+---
+
+### The case list needs a delete route for the client rules to work
+
+**Decided** — `DELETE /cases/{id}`, soft, owner or admin only.
+**Rejected** — Leaving cases undeletable.
+
+`cases.deleted_at` existed from the first migration and every query filtered on
+it, but nothing ever wrote to it. Combined with US-19 - a client with live cases
+cannot be deleted - that meant any client who had ever had a case was permanent.
+US-07 quietly stopped working the moment a case was opened.
+
+Soft, like clients and notes, because notes and both history tables point at the
+case row. Owner-only rather than assignee, matching who may already edit it.
+
+---
+
+### Errors from bugs use the same envelope as everything else
+
+**Decided** — A third handler on `Exception` that returns the same
+`{"error": {...}}` shape with a fixed message.
+**Rejected** — Letting FastAPI's default 500 through.
+
+Two handlers covered `HTTPException` and validation, which is every failure the
+code raises deliberately. Every failure it does not - an unhandled bug - came
+back in FastAPI's own shape instead. NF-05 says one shape for the whole API, and
+the frontend reads `data.error.message` everywhere, so the one moment it got
+nothing back was the moment something had actually broken.
+
+The message is fixed and says nothing. What went wrong belongs in the server
+log, not in a browser.
+
+---
+
+### A `staff_id` from a non-admin is refused, not ignored
+
+**Decided** — `POST /clients/registration` returns `403` when a staff member
+sends `staff_id` at all.
+**Rejected** — Dropping the field silently and giving them their own client,
+which is what it did before.
+
+The old version read nicely - "an admin can create a client for someone else,
+everyone else gets themselves, whatever they send" - and was wrong in a quiet
+way. The caller asked for one thing, got `200`, and got something else. Nothing
+in the response said the field had been thrown away, so a bug in a caller that
+sent the wrong `staff_id` would never surface.
+
+`403`, not `404`: there is no record whose existence needs hiding here, so the
+argument that makes ownership checks `404` does not apply. The action itself is
+outside what this caller may do, which is exactly what `require_admin` answers
+with. `422` would be wrong too - the body is well formed, the sender is not
+allowed to send it.
+
+This changed a test. `test_a_staff_member_cannot_hand_a_client_to_someone_else`
+used to assert the client came back owned by the sender; it now asserts `403`
+and that nothing was created at all. Worth saying out loud, because a test that
+changes with the code is the one place a silent behaviour change can hide.
+
+---
+
+### Token lifetime comes from `.env`
+
+**Decided** — `TOKEN_MINUTES`, read in `config.py`, used in `create_token`.
+**Rejected** — Leaving `timedelta(minutes=30)` in the code. Adding it to
+`REQUIRED`.
+
+The number was hard-coded while every other setting was in `.env`, so the one
+knob most likely to differ between a demo and anything else was the one you had
+to edit code to change.
+
+Not in `REQUIRED`, unlike `SECRET_KEY` and `DB_URL`. Those have no sensible
+default and the app should refuse to start without them. This one defaults to
+`30`, so an existing `.env` keeps working - `os.getenv("TOKEN_MINUTES", "30")`.
+The `int()` around it matters: `.env` hands back strings, and `timedelta` would
+fail on one much later and less clearly.
+
+---
+
+### The version check had to move into the `UPDATE` itself
+
+**Decided** — One statement: `UPDATE cases SET ..., version = version + 1
+WHERE id = ? AND version = ?`, and a `409` when it touches zero rows.
+**Rejected** — The first version, which read the row, compared the version in
+Python, and wrote afterwards.
+
+That first version passed all nine of its tests and still lost people's work.
+The three steps - read, compare, write - sat about seventy lines apart with no
+lock on the row between them, so two requests arriving together both read
+version 1, both passed the check, and both wrote. Four threads against a real
+server gave four `200`s, a version that went from 1 to 2 instead of 1 to 5, and
+three edits gone with nothing to say they had ever existed. The people who lost
+their work were shown "Saved".
+
+The tests could not have caught it. `TestClient` finishes one request before
+starting the next, so the second call always reads the version the first one
+wrote, and the `409` arrives exactly as intended. A race needs overlap.
+`test_concurrent_writes.py` runs a real uvicorn server, gives every request its
+own session, and releases four threads off a `threading.Barrier`. Reverting the
+router to the old code turns it red, which is the only reason to trust it.
+
+Two details carry the fix. The comparison lives in `WHERE`, so the database
+decides rather than Python - one `UPDATE` per row at a time means the first
+arrival moves the version and the rest no longer match. And `version` is
+`Case.version + 1`, built in SQL, not `current_case.version + 1` computed in
+Python: the Python number is the one read before the race, which is the stale
+number the whole mechanism exists to reject.
+
+`PATCH /cases/{id}/status` got the same treatment, guarding on
+`status = <what we read>` since no version is sent there. Without it two
+simultaneous `Intake -> Active` calls both succeeded and wrote two history rows
+for one transition.
+
+The check is no longer opt-in. A caller that sends no `version` is still not
+refused for sending a stale one - there is nothing to compare - but the guard
+now uses the value just read, so two simultaneous writers still resolve to one
+winner. Opt-in safety was the wrong shape: the callers most likely to omit the
+field are the ones least likely to handle the damage.
+
+---
+
+### Front-end tests mock one function, not the network
+
+**Decided** — Vitest and Testing Library, with `vi.mock("../api")` standing in
+for the whole backend and `jsdom` for the browser.
+**Rejected** — Mocking `axios`. Driving a real browser with Playwright. Running
+the real API behind the tests.
+
+Every request in the app goes through one function, `apiCall` in `src/api.js`.
+That was done so the `401` redirect and the error envelope lived in one place,
+and it turns out to be what makes these tests one line of setup each: there is
+no `axios` call anywhere else, so there is nothing else to intercept. Had the
+pages each done their own fetching, every test would have had to fake the HTTP
+layer instead.
+
+A real browser would test more and cost far more to run and keep working. The
+bugs these were written for did not need one: three of them were a missing
+`res.ok`, and one was asking the wrong URL.
+
+Each test was checked by putting the bug back and watching it fail. A test that
+has never been red is not yet a test — it is a file that runs. This mattered
+here, because all four of these were written after the fix rather than before
+it, so nothing else proves they point at the right thing.
+
+Queries use `getByLabelText`, which only matches when a label is tied to its
+input with `htmlFor`. That was added earlier for accessibility; making the tests
+depend on it means it cannot quietly rot.
+
+---
+
+### Vite pinned to 8.1.5
+
+**Decided** — `vite@8.1.5`, not the newer `8.2.2`.
+**Rejected** — Staying on 8.2.2 and skipping front-end tests. Patching
+`node_modules`.
+
+8.2.2 ships a broken bundle: the `vite:oxc` plugin calls
+`zxctransformWithOxc`, and the only function in the file is
+`transformWithOxc`. The name is corrupted at the call site, so any transform
+through that path throws `ReferenceError`.
+
+`npm run dev` and `npm run build` never hit it, which is why nothing looked
+wrong. Vitest does, on every file it loads, so the whole suite failed to start
+before a single test ran. 8.1.5 has the same call spelled correctly.
+
+Worth writing down because it looks like a version pinned for no reason, and
+the next person to bump it will land straight back on the same error.
+

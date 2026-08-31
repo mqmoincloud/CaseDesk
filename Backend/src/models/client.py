@@ -6,7 +6,7 @@ class Client(Base):
     __tablename__ = "clients"
 
     id = Column(Integer, primary_key=True, index=True)
-    staff_id = Column(ForeignKey("staff.id"), nullable=False)
+    staff_id = Column(ForeignKey("staff.id"), nullable=False, index=True)
     name = Column(String, nullable=False)
     email = Column(String, nullable=True)
     phone = Column(String, nullable=True)
@@ -15,3 +15,4 @@ class Client(Base):
     updated_at = Column(UTCDateTime, default=utcnow, onupdate=utcnow, nullable=False)
     deleted_at = Column(UTCDateTime, nullable=True)
     cases = relationship("Case", back_populates="client")
+    owner = relationship("Staff")

@@ -12,7 +12,15 @@ from src.config import config as app_config
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-config.set_main_option("sqlalchemy.url", app_config.db_url)
+
+# Normally the URL comes from DB_URL in .env, so the migrations and the app can
+# never point at different databases.
+#
+# The test fixtures drive alembic from Python and set the URL on this config
+# object before calling upgrade, so anything already set wins. Without this
+# check the tests would migrate the development database instead of their own.
+if not config.get_main_option("sqlalchemy.url", None):
+    config.set_main_option("sqlalchemy.url", app_config.db_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

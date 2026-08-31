@@ -1,12 +1,9 @@
-"""Shared test setup (NF-03: tests run against a real database).
 
-The database here is a real SQLite file, just a different one from the app's.
-Nothing is mocked - every test goes through FastAPI, through SQLAlchemy, and
-hits actual tables, so a broken query fails a test instead of slipping past a
-fake session.
-"""
+import os
 
 import pytest
+from alembic import command
+from alembic.config import Config as AlembicConfig
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -14,9 +11,10 @@ from sqlalchemy.orm import sessionmaker
 from src.database import Base, get_db
 from src.main import app
 
-# A separate file from the app's test.db, so running the suite never touches
-# the data you seeded for manual testing.
-TEST_DB_URL = "sqlite:///./pytest_casedesk.db"
+# A separate file from the app's casedesk.db, so running the suite never
+# touches the data you seeded for manual testing.
+TEST_DB_FILE = "pytest_casedesk.db"
+TEST_DB_URL = f"sqlite:///./{TEST_DB_FILE}"
 
 engine = create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
 TestingSession = sessionmaker(bind=engine)
@@ -24,31 +22,35 @@ TestingSession = sessionmaker(bind=engine)
 PASSWORD = "password123"
 
 
+@pytest.fixture(scope="session", autouse=True)
+def migrated_database():
+   
+    engine.dispose()
+    if os.path.exists(TEST_DB_FILE):
+        os.remove(TEST_DB_FILE)
+
+    alembic_config = AlembicConfig("alembic.ini")
+    alembic_config.set_main_option("sqlalchemy.url", TEST_DB_URL)
+    command.upgrade(alembic_config, "head")
+
+    yield
+
+
 @pytest.fixture
 def db():
-    """A clean set of tables for one test, dropped again afterwards.
-
-    Dropping between tests is what keeps them independent: a count assertion
-    in one test can't be thrown off by rows another test happened to leave
-    behind, and the order the tests run in stops mattering.
-    """
-    Base.metadata.create_all(bind=engine)
     session = TestingSession()
     try:
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(bind=engine)
+        # Children first, so no foreign key is left pointing at a deleted row.
+        with engine.begin() as connection:
+            for table in reversed(Base.metadata.sorted_tables):
+                connection.execute(table.delete())
 
 
 @pytest.fixture
 def client(db):
-    """A TestClient whose requests hit the test database.
-
-    Every route asks for its session with Depends(get_db). dependency_overrides
-    swaps in a replacement for that one dependency, so the whole app moves onto
-    the test database without a single route knowing about it.
-    """
 
     def override_get_db():
         try:
@@ -62,29 +64,59 @@ def client(db):
     app.dependency_overrides.clear()
 
 
-def register_and_login(client, name, email):
-    """Create a staff account and return the headers that authenticate it."""
+def login(client, email):
+    """Log in and return the headers that authenticate that account."""
+    response = client.post("/auth/login", json={"email": email, "password": PASSWORD})
+    token = response.json()["access_token"]
+    # The standard Authorization header, as "Bearer <token>".
+    return {"Authorization": f"Bearer {token}"}
+
+
+def register_and_login(client, name, email, admin_headers):
+    """Create a staff account through the API, then log in as it.
+
+    Registration is admin-only, so this needs an admin's headers - the same
+    chicken-and-egg the seed script solves by writing the first admin directly.
+    """
     client.post(
         "/auth/register",
         json={"name": name, "email": email, "password": PASSWORD},
+        headers=admin_headers,
     )
-    response = client.post(
-        "/auth/login", json={"email": email, "password": PASSWORD}
-    )
-    token = response.json()["access_token"]
-    # The app reads a header literally named "token", not Authorization.
-    return {"token": token}
+    return login(client, email)
 
 
 @pytest.fixture
-def ali(client):
-    return register_and_login(client, "Ali Khan", "ali@example.com")
+def admin(client, db):
+    """The first admin, written straight to the database.
+
+    It cannot go through /auth/register, because that route now requires an
+    admin to already exist. The seed script does the same thing.
+    """
+    from src.models import Staff
+    from src.security import hash_password
+
+    db.add(
+        Staff(
+            name="Admin",
+            email="admin@example.com",
+            password_hash=hash_password(PASSWORD),
+            role="admin",
+        )
+    )
+    db.commit()
+    return login(client, "admin@example.com")
 
 
 @pytest.fixture
-def sara(client):
+def ali(client, admin):
+    return register_and_login(client, "Ali Khan", "ali@example.com", admin)
+
+
+@pytest.fixture
+def sara(client, admin):
     """A second staff member - every isolation test needs someone to be kept out."""
-    return register_and_login(client, "Sara Sheikh", "sara@example.com")
+    return register_and_login(client, "Sara Sheikh", "sara@example.com", admin)
 
 
 @pytest.fixture
