@@ -78,7 +78,7 @@ venv\Scripts\activate          # macOS/Linux: source venv/bin/activate
 pytest
 ```
 
-236 tests, one file per epic. They run against a real SQLite database
+240 tests, one file per epic. They run against a real SQLite database
 (`pytest_casedesk.db`) — nothing is mocked, so a broken query fails a test
 instead of slipping past a fake session. Your development database is
 untouched.

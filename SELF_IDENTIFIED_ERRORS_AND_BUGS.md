@@ -8,7 +8,7 @@ unverified.
 
 **All of these are now fixed**, along with a second round found afterwards by
 running the code rather than reading it (listed at the bottom). Each fix has a
-test, and the suite is at 232.
+test, and the suite is at 240.
 
 The file stays because the point of it was never the list - it was being able
 to say why each one happened. The write-ups below are unchanged from when the

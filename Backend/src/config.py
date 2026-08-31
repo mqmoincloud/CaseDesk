@@ -22,3 +22,8 @@ if missing:
     raise RuntimeError(
         f"Missing from .env: {keys}. Copy .env.example to .env and fill it in."
     )
+
+if config.secret_key == "replace-me-with-a-long-random-string":
+    raise RuntimeError(
+        "SECRET_KEY is still the .env.example placeholder. Put a real one in .env."
+    )
